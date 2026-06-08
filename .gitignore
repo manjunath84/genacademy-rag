@@ -13,6 +13,7 @@ venv/
 
 # Data / vector stores / models (corpus stays out of git)
 data/
+spike/_fetched/
 *.sqlite
 *.db
 chroma/
