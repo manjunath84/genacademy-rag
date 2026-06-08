@@ -6,9 +6,9 @@ Run: 2026-06-08. Probe scripts in `spike/` (throwaway; venv gitignored). This ga
 
 | # | Spike item | Needs key? | Status | Verdict |
 |---|---|---|---|---|
-| 1 | Nebius chat model ID + JSON mode | Nebius | ⏳ key later today/Mon | probe staged; **not architecture-blocking** (grader fallback decided) |
-| 2 | Nebius throughput / rate limits (~10 seq calls) | Nebius | ⏳ key later today/Mon | probe staged; fallback = batch/sleep in eval loop |
-| 3 | End-to-end latency vs < 8 s ceiling | Nebius | 🟡 half | local embed = 12 ms; generate half pending key |
+| 1 | Chat model ID + JSON mode | gen | ✅ **done via OpenRouter** | **JSON mode works on an OPEN model** (Llama 3.1 70B) → grader uses JSON primary path. Nebius re-point pending credit (low-risk confirm). |
+| 2 | Throughput / rate limits (~10 seq calls) | gen | ✅ **done** | no throttling, 10/10 on both providers |
+| 3 | End-to-end latency vs < 8 s ceiling | gen | ✅ **done** | embed 12 ms + gen ~4 s ≪ 8 s |
 | 4 | GitHub fetch + commit-pin (eval corpus) | no | ✅ done | clean |
 | 5 | Guidebook parse-quality gate (production) | no | ✅ done | **PASS — no OCR** |
 | 6 | Pinecone free-tier + index dim = 384 | Pinecone | 🟢 deferred to P2 | **not a Phase-0 gate** (P0 uses Chroma); dim=384 match already confirmed |
@@ -46,19 +46,41 @@ Eval corpus = two public repos under `The-Gen-Academy`, fetched via `gh api` / `
 - extract time 0.3 s · 19,321 chars · mean 1,288 chars/page · **0 empty pages** · printable ratio **0.994** · 389 heading-like lines.
 - **Verdict: pypdf is adequate. OCR fallback NOT needed.** The historical "#1 risk" is low-risk. (Production corpus only; does not gate the graded eval.)
 
-## 3. Local embedding latency — 🟡 (generation half pending)
+## 3. Latency — ✅ (embed + generate, both halves)
 
-`all-MiniLM-L6-v2`: **dim = 384 confirmed** · cold load 11.6 s (one-time at startup) · **single-query embed = 12 ms** · batch ingest 377 chunks/s. Online embed is negligible against the 8 s ceiling → the budget is effectively all Nebius generation. Confirm the generate half once the key is in.
+- **Local embed** (`all-MiniLM-L6-v2`): **dim = 384 confirmed** · cold load 11.6 s (one-time at startup) · **single-query embed = 12 ms** · batch ingest 377 chunks/s.
+- **Generation** (probe via OpenRouter/OpenAI, 2026-06-08): single full-answer call ~3.75–4.40 s; warm short calls 0.48–0.67 s. **embed 12 ms + gen ~4 s ≪ 8 s ceiling**, with headroom for retrieval + grader.
+
+## 1–2. Generation provider probe — ✅ (real data on an open model)
+
+Ran `spike/gen_probe.py` against two OpenAI-compatible providers (Nebius credit not yet in; OpenRouter
+is the representative stand-in — it serves the **open** models Nebius will).
+
+| Provider | Model | JSON mode | Single gen | Warm mean (10 seq) | Throttling |
+|---|---|---|---|---|---|
+| **OpenRouter** | `meta-llama/llama-3.1-70b-instruct` (OPEN) | ✅ **YES** | 3.75 s | 0.48 s | none (10/10) |
+| OpenAI | `gpt-4o-mini` | ✅ YES | 4.40 s | 0.67 s | none (10/10) |
+
+- **JSON mode works on an open Llama model** — the grounding probe returned clean
+  `{"grounded": false, "reason": ...}`. → The refusal grader can use the **JSON-mode primary path**
+  (design §7), not just the cosine-threshold fallback. Nebius serves the same model class, so this is
+  expected to hold; **re-point + re-run when credit lands** (low-risk confirmation, not a gate).
+- **No rate-limit throttling** on 10 sequential calls either provider.
+- **Two working providers behind one OpenAI-compatible `ModelProvider.generate()` seam** = the graded
+  "swap models/providers" demo is real today. Generation provider presets: **Nebius (mandatory final
+  call)**, OpenRouter, OpenAI, local Gemma — all the same seam (base_url + key + model id).
 
 ## Path note (not eval-blocking)
 
 The design docs reference `../CuratedRAGMaterials/` (i.e. inside `Week2-RAG_ContextEngineering/`). The folder actually lives at **`GenAcademy/CuratedRAGMaterials/`** — one level higher (`../../CuratedRAGMaterials/` from `genacademy-rag/`). Production-corpus loaders must use the correct path; update the design's path reference during planning.
 
-## Spike verdict
+## Spike verdict — ✅ COMPLETE, cleared to plan Phase 0
 
-**Cleared to plan Phase 0.** Every remaining item is either deferred (Pinecone → P2) or externally
-blocked with a decided fallback (Nebius, key later today). Nothing open changes the Phase-0 architecture.
+All Phase-0-relevant items confirmed with real data: GitHub pin clean, guidebook parses (no OCR),
+embed dim=384 / 12 ms, generation JSON-mode + latency + rate-limits validated on an **open** model.
+Pinecone deferred to Phase 2 (P0 uses Chroma).
 
-When the Nebius key lands: `cp spike/.env.example spike/.env`, fill `NEBIUS_API_KEY`, then run
-`spike/nebius_probe.py` to confirm model id + JSON-mode (→ grader variant) + latency. Pinecone probe
-(`spike/pinecone_probe.py`) only when Phase 2 starts.
+**Only follow-up (non-blocking):** when the Nebius key arrives, set `NEBIUS_API_KEY` in `spike/.env`
+and re-run `spike/gen_probe.py` to confirm the open-model JSON-mode + latency hold on Nebius
+specifically — a one-line config re-point, not an architecture change. Run `spike/pinecone_probe.py`
+only when Phase 2 starts.
