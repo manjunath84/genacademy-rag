@@ -19,7 +19,7 @@ def _tokenize(text: str) -> list[str]:
 
 
 def rrf_fuse(rankings: list[list[str]], k: int = 60) -> dict[str, float]:
-    """Reciprocal Rank Fusion: score = sum over lists of 1/(k + rank)."""
+    """Reciprocal Rank Fusion: score = sum over lists of 1/(k + rank + 1), rank 0-indexed."""
     scores: dict[str, float] = {}
     for ranking in rankings:
         for rank, item in enumerate(ranking):
