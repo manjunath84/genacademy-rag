@@ -202,4 +202,39 @@ Point every planning agent at `design.md` (the reviewed spec), not just `archite
 
 ---
 
+## 9. Corpus scope change — two-tier eval/production corpus (2026-06-07)
+
+**Trigger:** the user revealed the corpus is not (only) the `../CuratedRAGMaterials/` files but the
+cohort's **live GitHub repos** under `The-Gen-Academy`, plus a **NotebookLM** notebook of curated
+resources, and stated the material *keeps growing* (will upload more via UI). Kimchi's `design-review.md`
+Parts 6–8 assessed the GitHub scope change and drafted 15 grounded eval questions. This **supersedes the
+"14 files" corpus model** that §1 of `design.md` briefly carried (and that we'd just pushed).
+
+**Decision — split the corpus into two tiers (the organizing principle):**
+
+| | Eval corpus (graded) | Production corpus (serves users) |
+|---|---|---|
+| Contents | Frozen, **commit-pinned** GitHub repos | Repos @HEAD + admin uploads + future sources |
+| Gold set | **ONE** 15-question set anchors here | none — never expands the gold set |
+| Why | Reproducible eval; protects the ~6 h annotation budget (the #1 risk) | Lets the corpus grow without touching the graded spine |
+
+**Consequences folded into the specs + design:**
+
+| Topic | Decision |
+|---|---|
+| Phase-0 eval loaders | `GitHubFetcher` + `MarkdownLoader` + `JupyterLoader` over `awesome-agentic-ai-resources` + `Mastering-Agentic-AI-Week1`, pinned to a commit SHA. |
+| Production loaders | `PdfLoader`/`DocxLoader` (+ Pptx/Python/JSON/Web later) feed production only — additional retrievable content, not graded. |
+| `Mastering-Agentic-AI-Week2` | **Excluded** (it *is* the sample solution). Notebooks/code never read or ingested — reading them is disqualifying. A future admin-uploaded Week-2 **PPT** may join *production*. |
+| NotebookLM | **Not integrated** — a sink with no consumer API (official one is Enterprise-only; consumer API "in the works"). Its resource *list* = the `awesome-agentic-ai-resources` catalog we already ingest, so nothing extra is built. |
+| Citation schema | GitHub: `{repo, file_path, line_start/end, commit_hash}`; files: `{doc_id, title, page/section, char_span}`. |
+| Eval Q8 + `JSONLoader` | Kimchi's Q8 (ShopEasy KB) and the `JSONLoader` both depended on `shopeasy_knowledge_base.json`, which lives in the **excluded** Week-2 repo → **Q8 re-anchored** to a README split-table question; **`JSONLoader` deferred** (no Phase-0 non-Week-2 JSON source). |
+| Admin upload | Promoted from pure cut-candidate to a **minimal upload endpoint** (Phase-0/1 boundary) since the user will add docs via UI; polished upload UI stays Phase 1. Eval never needs it (pinned-script corpus). |
+| 19.3 MB guidebook | Reclassified **production**, no longer the #1 *eval* risk — the graded eval is clean GitHub-Markdown. Parse-gate/OCR/exclude still applies for production. |
+
+**Meta-learning:** a corpus is a *moving* input, not a fixed asset. Separating a pinned eval snapshot from
+a growing production corpus is what lets "the user keeps adding sources" coexist with a reproducible
+graded eval — decide this split *before* the loader/eval code, or every new upload threatens the gold set.
+
+---
+
 *Next: run the spike (`design.md` §9) → `writing-plans` for the phase-by-phase implementation plan.*

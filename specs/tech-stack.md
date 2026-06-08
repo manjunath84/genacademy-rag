@@ -10,7 +10,8 @@ FastAPI (one service)
 ├── View:  HTMX + Tailwind + Alpine.js   — Phase 0: NON-STREAMING form-post; SSE optional (first to cut)
 ├── Auth:  server sessions + role gate   — admin / member  (P0: 2 seeded users; P1: invite-code RBAC)
 ├── Core (pure, no web imports):
-│   ├── Loader registry  — PDF, DOCX (P0) → web (P1)
+│   ├── Loader registry  — GitHub fetcher + Markdown/Jupyter (P0: commit-pinned EVAL corpus)
+│   │                      + PDF/DOCX (PRODUCTION files) → Pptx/JSON/Python/web (later, as corpus grows)
 │   ├── Chunker iface     — FixedSizeChunker ~512/64 (P0) → SectionAwareChunker (P2)
 │   ├── ModelProvider    — embed: local sentence-transformers all-MiniLM-L6-v2 (384-dim, P0)
 │   │                      generate: Nebius (MANDATORY ≥1 call)
@@ -36,6 +37,8 @@ FastAPI (one service)
 2. **Pluggability = interface + config preset, not scattered conditionals.** New provider/store/chunker
    = a new class + a config entry. No `if provider == ...` in business logic.
 3. **Citation metadata captured at ingest** and threaded to the answer. Never reconstructed post-hoc.
+   GitHub sources carry `{repo, file_path, line_start/end, commit_hash}`; file sources carry
+   `{doc_id, title, page/section, char_span}`.
 4. **Refusal path cannot be bypassed** to improve a demo. Low confidence → refuse, don't answer from
    priors.
 5. **Reference calls verbatim.** Nebius model IDs, embedding **dimension (384)**, Pinecone index config,
@@ -43,6 +46,9 @@ FastAPI (one service)
    `specs/<feature>/requirements.md` — never paraphrased. Embedding dim MUST match the vector index dim.
 6. **Pin LangChain/LangGraph to exact versions** in `pyproject.toml` (mid-week releases break pipelines).
 7. **Secrets via env only.** Nebius/Pinecone keys never committed, never logged.
+8. **Eval corpus is commit-pinned; the `Mastering-Agentic-AI-Week2` notebooks/code are never ingested or
+   read** (the sample solution — reading it to inform the build is disqualifying). Eval = one frozen
+   snapshot + one gold set; production tracks HEAD + uploads and never expands the gold set.
 
 ## Grader mechanism (decided; spike-gated)
 
@@ -55,7 +61,9 @@ similarity** of query vs top-k chunks against a **calibrated threshold** (tuned 
 - Nebius **chat model ID** + **JSON mode / structured-output** support (gates grader + LLM-judge format).
 - **Throughput / rate limits** (eval = 15 generate + 15 judge calls in a loop).
 - Measured **latency** (local embed + Nebius generate) vs the < 8 s ceiling.
-- **20 MB guidebook parse quality** → OCR fallback / exclude-if-bad.
+- **GitHub fetch + commit-pin** (eval corpus): list/fetch raw files at a fixed SHA; Markdown/Jupyter parse.
+- **19.3 MB guidebook parse quality** — now a *production* file (no longer gates the graded eval, which is
+  GitHub-Markdown) → OCR fallback / exclude-if-bad.
 - Pinecone free-tier index config (dimension must match **384**).
 
 ## Reproducible deploy (Phase 2)
