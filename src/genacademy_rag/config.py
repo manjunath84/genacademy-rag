@@ -3,6 +3,7 @@ behind one ModelProvider.generate() seam — no `if provider == ...` in business
 from __future__ import annotations
 
 import os
+import warnings
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -26,7 +27,8 @@ PROVIDER_PRESETS: dict[str, tuple[str, str, str, str]] = {
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR = REPO_ROOT / "data"
-# Spike path fix: production files live one level above Week2-RAG_ContextEngineering.
+# Materials live at GenAcademy/CuratedRAGMaterials/ — two levels above REPO_ROOT
+# (REPO_ROOT=genacademy-rag/ → parent=Week2-RAG_ContextEngineering/ → parent=GenAcademy/)
 CURATED_MATERIALS_DIR = REPO_ROOT.parent.parent / "CuratedRAGMaterials"
 
 
@@ -43,6 +45,13 @@ class Settings:
     chroma_dir: Path
     sqlite_path: Path
     session_secret: str
+
+    def __post_init__(self):
+        if self.session_secret == "dev-only-change-me":
+            warnings.warn(
+                "GENACADEMY_SESSION_SECRET is the default dev value — set it before deploying",
+                stacklevel=2,
+            )
 
     @classmethod
     def from_env(cls) -> Settings:
