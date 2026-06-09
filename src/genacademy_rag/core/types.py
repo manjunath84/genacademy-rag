@@ -51,6 +51,8 @@ class Document:
     file_path: str | None = None
     commit_hash: str | None = None
     filename: str | None = None
+    uploaded_by: str | None = None
+    stored_path: str | None = None
 
 
 @dataclass(frozen=True)

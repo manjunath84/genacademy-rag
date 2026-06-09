@@ -7,12 +7,14 @@ refusal into an answer (see json_utils.strict_bool)."""
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass
 
 from genacademy_rag.core.json_utils import strict_bool
 from genacademy_rag.core.types import RetrievedChunk
 
 GRADER_SYSTEM = "You are a strict grader. Reply ONLY with a JSON object."
+logger = logging.getLogger(__name__)
 GRADER_USER_TMPL = (
     "Question:\n{question}\n\n"
     "Retrieved context (the ONLY allowed source):\n{context}\n\n"
@@ -56,4 +58,7 @@ def grade_answerability(question: str, retrieved: list[RetrievedChunk], provider
     except (json.JSONDecodeError, KeyError, TypeError, ValueError):
         # Any malformed field — including a non-boolean `answerable` strict_bool rejects — routes
         # to the cosine fallback, which fails toward refusal below threshold.
+        return cosine_fallback_grade(retrieved, threshold=cosine_threshold)
+    except Exception:
+        logger.warning("grader provider call failed; using cosine fallback", exc_info=True)
         return cosine_fallback_grade(retrieved, threshold=cosine_threshold)

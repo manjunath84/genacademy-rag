@@ -1,3 +1,6 @@
+import threading
+import time
+
 from genacademy_rag.core.retriever import HybridRetriever, rrf_fuse
 from genacademy_rag.core.types import Chunk, Citation
 
@@ -79,3 +82,72 @@ def test_retrieved_score_is_cosine_similarity_not_rrf(fake_provider):
     retr = HybridRetriever(store=_Store(), provider=fake_provider, all_chunks=[chunk], top_k=1)
     [r] = retr.retrieve("retrieval augmented generation")
     assert r.score == 0.91               # cosine sim carried through, not 2/61
+
+
+def test_reindex_uses_single_snapshot_not_torn_fields(fake_provider):
+    old = _chunk(0, "old retrieval text")
+    new = _chunk(1, "new Pinecone text")
+
+    class _Store:
+        def __init__(self):
+            self.chunks = [old]
+
+        def query(self, qvec, top_k):
+            return [(c.chunk_id, 0.8) for c in self.chunks]
+
+    store = _Store()
+    retr = HybridRetriever(store=store, provider=fake_provider, all_chunks=[old], top_k=5)
+    store.chunks = [new]
+    retr.reindex([new])
+    results = retr.retrieve("Pinecone")
+    assert [r.chunk.chunk_id for r in results] == ["d1::1"]
+
+
+def test_mutation_lock_prevents_deleted_sparse_orphan(fake_provider):
+    keep = _chunk(0, "keep chunk about embeddings")
+    delete = _chunk(1, "delete chunk about QLoRA")
+    query_entered = threading.Event()
+    release_query = threading.Event()
+
+    class _Store:
+        def __init__(self):
+            self.chunks = [keep, delete]
+
+        def query(self, qvec, top_k):
+            query_entered.set()
+            release_query.wait(timeout=2)
+            return [(c.chunk_id, 0.9) for c in self.chunks]
+
+        def delete_doc(self, doc_id):
+            self.chunks = [keep]
+
+        def get_all_chunks(self):
+            return list(self.chunks)
+
+    store = _Store()
+    retr = HybridRetriever(store=store, provider=fake_provider, all_chunks=store.get_all_chunks(),
+                           top_k=5)
+    first_results = []
+
+    def retrieve_before_delete():
+        first_results.extend(retr.retrieve("QLoRA"))
+
+    thread = threading.Thread(target=retrieve_before_delete)
+    thread.start()
+    assert query_entered.wait(timeout=2)
+    mutation_done = threading.Event()
+
+    def mutate():
+        retr.mutate_corpus(lambda: (store.delete_doc("d1"), store.get_all_chunks())[1])
+        mutation_done.set()
+
+    mutation_thread = threading.Thread(target=mutate)
+    mutation_thread.start()
+    time.sleep(0.05)
+    assert not mutation_done.is_set()
+    release_query.set()
+    thread.join(timeout=2)
+    mutation_thread.join(timeout=2)
+    assert mutation_done.is_set()
+    after = retr.retrieve("QLoRA")
+    assert all(r.chunk.chunk_id != "d1::1" for r in after)

@@ -40,3 +40,78 @@ def test_ingest_chunks_embeds_stores_and_records(tmp_path, fake_provider):
     # stored & queryable
     qvec = fake_provider.embed(["x" * 50])[0]
     assert store.query(qvec, top_k=1)
+
+
+def test_ingest_pipeline_records_upload_provenance(fake_provider):
+    calls = {}
+
+    class Store:
+        def upsert(self, chunks, embeddings):
+            calls["upsert_chunks"] = chunks
+
+    class Datastore:
+        def add_document(self, **kwargs):
+            calls["document"] = kwargs
+
+        def add_chunks_meta(self, chunks):
+            calls["chunks_meta"] = chunks
+
+    doc = Document(
+        doc_id="pdf/abc",
+        title="notes.pdf",
+        source_type="pdf",
+        text="Gen Academy notes about retrieval.",
+        filename="notes.pdf",
+        uploaded_by="admin@genacademy.local",
+        stored_path="/tmp/pdf_abc.pdf",
+    )
+    pipe = IngestPipeline(
+        chunker=FixedSizeChunker(chunk_size=50, overlap=5),
+        provider=fake_provider,
+        store=Store(),
+        datastore=Datastore(),
+    )
+    assert pipe.ingest([doc]) == 1
+    assert calls["document"]["uploaded_by"] == "admin@genacademy.local"
+    assert calls["document"]["stored_path"] == "/tmp/pdf_abc.pdf"
+    assert calls["upsert_chunks"][0].doc_id == "pdf/abc"
+
+
+def test_prepared_ingest_embeds_before_persistence(fake_provider):
+    calls = []
+
+    class Store:
+        def upsert(self, chunks, embeddings):
+            calls.append(("upsert", [c.chunk_id for c in chunks], len(embeddings)))
+
+    class Datastore:
+        def add_document(self, **kwargs):
+            calls.append(("add_document", kwargs["doc_id"], kwargs["n_chunks"]))
+
+        def add_chunks_meta(self, chunks):
+            calls.append(("add_chunks_meta", [c.chunk_id for c in chunks]))
+
+    doc = Document(
+        doc_id="pdf/abc",
+        title="notes.pdf",
+        source_type="pdf",
+        text="Gen Academy notes about retrieval.",
+        filename="notes.pdf",
+        uploaded_by="admin@genacademy.local",
+    )
+    pipe = IngestPipeline(
+        chunker=FixedSizeChunker(chunk_size=50, overlap=5),
+        provider=fake_provider,
+        store=Store(),
+        datastore=Datastore(),
+    )
+
+    prepared = pipe.prepare([doc])
+
+    assert calls == []
+    assert pipe.commit(prepared) == 1
+    assert calls == [
+        ("add_document", "pdf/abc", 1),
+        ("add_chunks_meta", ["pdf/abc::0"]),
+        ("upsert", ["pdf/abc::0"], 1),
+    ]

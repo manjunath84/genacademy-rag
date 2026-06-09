@@ -623,6 +623,7 @@ name = "genacademy-rag"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "bcrypt" },
     { name = "chromadb" },
     { name = "fastapi" },
     { name = "itsdangerous" },
@@ -649,6 +650,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "bcrypt", specifier = "==5.0.0" },
     { name = "chromadb", specifier = "==1.5.9" },
     { name = "fastapi", specifier = "==0.136.3" },
     { name = "itsdangerous", specifier = "==2.2.0" },
