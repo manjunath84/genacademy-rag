@@ -331,7 +331,8 @@ def build_default_app() -> FastAPI:
     from genacademy_rag.core.chunker import FixedSizeChunker
     from genacademy_rag.core.pipeline import IngestPipeline
     from genacademy_rag.core.providers import build_provider
-    from genacademy_rag.core.retriever import HybridRetriever
+    from genacademy_rag.core.reranker import build_reranker
+    from genacademy_rag.core.retriever import DEFAULT_CANDIDATE_K, HybridRetriever
     from genacademy_rag.core.vectorstore import ChromaStore
 
     s = Settings.from_env()
@@ -343,8 +344,15 @@ def build_default_app() -> FastAPI:
     serving = ChromaStore(persist_dir=s.chroma_dir, collection="serving")
     if not serving.get_all_chunks():    # seed once from the pinned eval chunks
         serving.upsert(chunks, provider.embed([c.text for c in chunks]))
-    retriever = HybridRetriever(store=serving, provider=provider,
-                                all_chunks=serving.get_all_chunks(), top_k=s.top_k)
+    retriever = HybridRetriever(
+        store=serving,
+        provider=provider,
+        all_chunks=serving.get_all_chunks(),
+        top_k=s.top_k,
+        candidate_k=DEFAULT_CANDIDATE_K,
+        reranker=build_reranker(s),
+        rerank_pool=s.rerank_pool,
+    )
     datastore = SQLiteDatastore(s.sqlite_path)
     pipe = IngestPipeline(chunker=FixedSizeChunker(s.chunk_size, s.chunk_overlap),
                           provider=provider, store=serving, datastore=datastore)

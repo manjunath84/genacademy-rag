@@ -554,6 +554,13 @@ def test_default_upload_embeds_before_corpus_mutation_lock(monkeypatch, tmp_path
         chroma_dir=tmp_path / "chroma",
         sqlite_path=tmp_path / "t.sqlite",
         session_secret="test-secret",
+        rerank_enabled=False,
+        rerank_model="cross-encoder/ms-marco-MiniLM-L6-v2",
+        rerank_local_files_only=True,
+        rerank_batch_size=32,
+        rerank_pool=0,
+        rerank_device=None,
+        rerank_cache_dir=None,
     )
 
     class Provider:
@@ -579,8 +586,21 @@ def test_default_upload_embeds_before_corpus_mutation_lock(monkeypatch, tmp_path
             self.chunks.extend(chunks)
 
     class Retriever:
-        def __init__(self, *, store, provider, all_chunks, top_k):
+        def __init__(
+            self,
+            *,
+            store,
+            provider,
+            all_chunks,
+            top_k,
+            candidate_k=20,
+            reranker=None,
+            rerank_pool=0,
+        ):
             self.store = store
+            self.candidate_k = candidate_k
+            self.reranker = reranker
+            self.rerank_pool = rerank_pool
 
         def retrieve(self, query):
             return []
