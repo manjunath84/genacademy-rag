@@ -113,13 +113,16 @@ coherent system. This is a small distributed-consistency problem.
 - *Hybrid* gives **index-reflects-reality immediately** (correctness) **and** keeps history. The
   relational tombstone is the system of record; the search index holds only live content.
 
-**Decision: hybrid.** Precise order: (1) remove vectors from `serving` + atomically swap the
-retrieval snapshot → un-queryable; (2) `unlink(missing_ok=True)` the file; (3) drop `chunks_meta`;
-(4) tombstone the `documents` row last (`status='deleted', deleted_at, deleted_by`). Serialized
-behind the corpus mutation lock; idempotent and re-runnable so a partial failure recovers by
-re-running. Guarded so only *uploaded* docs are deletable — the seeded curriculum can't be nuked —
-and **only `serving` is ever mutated; `eval` is immutable** (the Phase-0 isolation invariant). The
-tombstone records `deleted_by` so "deleted by X at T" is answerable without a separate audit table.
+**Decision: hybrid.** Precise delete order: (1) remove vectors from `serving` + atomically swap the
+retrieval snapshot → un-queryable for later retrievals; (2) `unlink(missing_ok=True)` the file; (3)
+drop `chunks_meta`; (4) tombstone the `documents` row last (`status='deleted', deleted_at,
+deleted_by`). Serialized behind the corpus mutation lock; idempotent and re-runnable so a partial
+failure recovers by re-running. Guarded so only *uploaded* docs are deletable — the seeded curriculum
+can't be nuked — and **only `serving` is ever mutated; `eval` is immutable** (the Phase-0 isolation
+invariant). The tombstone records `deleted_by` so "deleted by X at T" is answerable without a separate
+audit table. Upload uses the opposite fail-safe bias: compute file/chunks/embeddings first, then under
+the corpus lock write metadata with the DB lock nested, upsert to `serving`, and swap the snapshot so
+the document is not searchable until the product metadata exists.
 
 **How an interviewer probes it.**
 - *"What if the process crashes mid-delete?"* → order matters: do the correctness-critical removal
@@ -246,11 +249,23 @@ latency bottleneck, so serializing it costs ~nothing.
 
 **Decision: immutable snapshot (clean atomic rebuild) + a single `threading.Lock` (the corpus lock)
 held around `retrieve()` itself and every mutation.** The lock — not the snapshot — is the correctness
-mechanism that keeps dense + sparse coherent per query. A read/write lock is the optimization if query
-concurrency ever matters; a plain mutex is the tight Phase-1 choice. Multi-worker → external/shared
-lock (Phase-2). **Plus a datastore `threading.RLock`** around the shared SQLite connection (Phase-0
-opened it `check_same_thread=False`, and Phase 1 adds concurrent threadpool writes), with documented
-**corpus-lock-before-DB-lock** ordering so the two locks can't deadlock.
+mechanism that keeps dense + sparse coherent per retrieval. It protects the graph's retrieve node, not
+the later grade/answer nodes, so model calls never run under the corpus lock. A request that retrieved
+before a delete may still finish with pre-delete citations; after the delete mutation starts, later
+retrievals cannot see the deleted chunks. A read/write lock is the optimization if query concurrency
+ever matters; a plain mutex is the tight Phase-1 choice. Multi-worker → external/shared lock
+(Phase-2).
+
+Implementation detail: use one shared corpus-lock object for the serving retriever and product
+mutation closures. Avoid external code taking a non-reentrant lock and then calling a public
+`reindex()` that takes it again; either route mutations through a single `mutate_corpus(fn)` /
+`reindex_from_store(fn)` method that locks once, or use a private unlocked swap helper inside locked
+methods. **Plus a datastore `threading.RLock`** around the shared SQLite connection (Phase-0 opened it
+`check_same_thread=False`, and Phase 1 adds concurrent threadpool writes), with documented
+**corpus-lock-before-DB-lock** ordering so the two locks can't deadlock. `/ask` takes corpus and DB
+locks in separate phases (retrieve first, usage logging later); upload/delete take corpus then DB;
+invite/login/dashboard paths take only DB. Admin role re-checks must release the DB lock before any
+corpus mutation begins.
 
 **How an interviewer probes it.**
 - *"Single worker — is there even concurrency?"* → yes: sync routes run in a threadpool; async routes
@@ -283,7 +298,9 @@ synchronizer-token pattern (b) is the textbook server-rendered-form defense and 
 entirely in the view, so it doesn't touch pure core.
 
 **Decision: per-session CSRF token on every state-changing form + `SameSite=lax`.** Defense in depth,
-view-layer only. Flagged as **Important** by the review; absent from the first draft.
+view-layer only. This includes login/logout if present, signup, `/ask` after it writes `usage_log`,
+invite generate/revoke, upload, delete, and reindex. Flagged as **Important** by the review; absent
+from the first draft.
 
 **How an interviewer probes it.**
 - *"Why doesn't the admin role check stop CSRF?"* → CSRF rides the victim's own authenticated

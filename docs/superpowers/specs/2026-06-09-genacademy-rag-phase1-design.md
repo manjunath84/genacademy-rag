@@ -26,7 +26,7 @@ Turn the green Phase-0 spine (member asks → cited answer or refusal) into a **
 3. **`usage_log` + admin dashboard** — queries over time, top questions, refusal rate, latency p50/p95, grader-fallback rate.
 
 ### Cross-cutting prod-grade requirements (added in review)
-- **CSRF protection** on every state-changing POST (signup, invite generate/revoke, doc delete/reindex, upload).
+- **CSRF protection** on every state-changing POST (login/logout if added, signup, `/ask` once it writes usage, invite generate/revoke, doc delete/reindex, upload).
 - **Concurrency-safe corpus mutation** — a single retrieval snapshot swapped atomically + a mutation lock; no torn reads during upload/delete/reindex.
 - **Idempotent schema + data migration** — add new columns/tables and rehash seeded plaintext passwords on an existing DB.
 
@@ -135,7 +135,7 @@ CREATE TABLE usage_log (
 
 ### 6.2 Content management
 - `/admin/documents` (GET): table (title, source_type, status, n_chunks, uploaded_by, created_at) + actions.
-- **Upload** (exists): store bytes at `uploads_dir/<safe_doc_id>.<ext>` where the on-disk name derives from the content-hash `doc_id` (not the user filename) → no collisions; record `stored_path`; keep original `filename` for display only *(review fix #8)*. `uploaded_by` is threaded from the session through the loader and `IngestPipeline.add_document(...)` *(review fix #3)*.
+- **Upload** (exists): read bytes, compute the content-hash `doc_id`, store bytes at `uploads_dir/<safe_doc_id>.<ext>` where the on-disk name derives from that `doc_id` (not the user filename) → no collisions; record `stored_path`; keep original `filename` for display only *(review fix #8)*. Parsing/chunking/embedding can happen before the corpus lock. The final persistence step runs under the corpus lock: write document/chunk metadata with the DB lock nested inside the corpus lock, upsert chunks into `serving`, then atomically swap the retrieval snapshot. `uploaded_by` is threaded from the session through the loader and `IngestPipeline.add_document(...)` *(review fix #3)*.
 - **Delete** (POST, guarded `uploaded_by IS NOT NULL` — curriculum undeletable) — **precise, fail-safe, idempotent order** *(review fixes #2, #5)*:
   1. Acquire the corpus mutation lock.
   2. `VectorStore.delete_doc(doc_id)` on `serving` *(review fix #4)*, then rebuild + **atomically swap** the retrieval snapshot (§6.5) → doc is immediately un-queryable. (Correctness-critical step first.)
@@ -164,19 +164,29 @@ Two concurrent redemptions of the same code → exactly one wins (the conditiona
 
 **Design:**
 - `HybridRetriever`'s three fields become one immutable `_Index(ids, chunks_by_id, bm25)`; `reindex()` builds a new `_Index` and swaps the reference in a single assignment (no torn in-memory state).
-- **A single `threading.Lock` (the corpus lock) guards both `retrieve()`'s index access AND every mutation** (Chroma `delete_doc`/`upsert` + snapshot swap). This is the correctness mechanism: a query runs entirely before or entirely after a mutation, so dense (Chroma) and sparse (snapshot) are always the same corpus version — the orphan window is closed.
-- The lock is held only for the ~12 ms of index access (query embed + Chroma query + BM25 scoring); the seconds-long grade/answer **LLM calls run in later graph nodes, outside the lock**, so readers serializing with each other is negligible against LLM-dominated latency.
+- **A single `threading.Lock` (the corpus lock) guards both `retrieve()`'s index access AND every mutation** (Chroma `delete_doc`/`upsert` + snapshot swap). This is the correctness mechanism: the retrieval phase runs entirely before or entirely after a mutation, so dense (Chroma) and sparse (snapshot) are always the same corpus version — the orphan window is closed.
+- Implementation detail: keep one shared corpus-lock object for the serving retriever and product mutation closures. Do not expose a pattern where route code acquires a non-reentrant lock and then calls a public `reindex()` that tries to acquire it again. Either expose a single `HybridRetriever.mutate_corpus(fn)`/`reindex_from_store(fn)` method that locks once and swaps an `_Index`, or keep a private `_swap_index_unlocked()` used by locked mutation methods. Product code never receives or mutates an `eval` store.
+- The lock is held only for the retrieval node's index access (query embed + Chroma query + BM25 scoring + materialization); the seconds-long grade/answer **LLM calls run in later graph nodes, outside the lock**, so readers serializing with each other is negligible against LLM-dominated latency. An in-flight request that already completed retrieval before an admin delete may still finish with those pre-delete citations; after the delete's corpus mutation begins, no later retrieval can return the deleted chunks.
 - *Escalation:* under multiple workers an in-process lock no longer suffices → external/shared index or a distributed lock (Phase-2 deploy). A read/write lock is the optimization if query concurrency matters before then; a plain mutex is the tight, correct Phase-1 choice.
 
 ### 6.6 CSRF *(review fix #7)*
-A view-layer CSRF helper: a per-session token stored in the session, emitted as a hidden field in every state-changing form, validated on each POST (signup, invite generate/revoke, doc delete/reindex, upload). Pure-core boundary untouched (the helper lives in `web/`). Session cookie set `same_site='lax'`; `secure=True` under HTTPS at deploy.
+A view-layer CSRF helper: a per-session token stored in the session, emitted as a hidden field in every state-changing form, validated on each POST (login/logout if added, signup, `/ask` once it writes `usage_log`, invite generate/revoke, doc delete/reindex, upload). Pure-core boundary untouched (the helper lives in `web/`). Session cookie set `same_site='lax'`; `secure=True` under HTTPS at deploy.
 
 ### 6.7 Datastore concurrency *(2nd review pass)*
 The Phase-0 `SQLiteDatastore` holds **one** connection opened with `check_same_thread=False`. Phase 1 adds concurrent route writes (`redeem_invite`, `log_query`, invite revoke, delete tombstone, chunks cleanup) issued from threadpool threads sharing that single connection — unsafe (interleaved statements, and `BEGIN IMMEDIATE` on a shared connection is fragile).
 
 **Design:** a datastore-level `threading.RLock` (the **DB lock**) wraps every connection use — all reads, writes, and transactions, including the `BEGIN IMMEDIATE` redemption transaction (§6.4).
 
-**Lock ordering (deadlock avoidance):** the **corpus lock is always acquired before the DB lock**; no path holds the DB lock and then waits for the corpus lock. Concretely: `delete` takes the corpus lock (index removal + snapshot swap), then the DB lock (tombstone); `redeem_invite` / `log_query` / `revoke` take only the DB lock. (Alternative considered: short-lived per-operation connections + `busy_timeout` — more "real" for multi-process, more churn; the single-connection + RLock is the tight single-worker choice, with connection pooling as the Postgres-era path.)
+**Lock ordering (deadlock avoidance):** the **corpus lock is always acquired before the DB lock**; no path holds the DB lock and then waits for the corpus lock. Route guards may re-read the user role from the DB, but they must release the DB lock before route code enters any corpus mutation.
+
+Route matrix:
+- `/ask`: `retrieve()` briefly takes the corpus lock, releases it before `grade`/`answer`, then the view writes `usage_log` under the DB lock. It never holds both locks at once.
+- `upload`: read file/hash/parse/embed before locks where possible; final persistence takes corpus lock, then DB lock for document/chunk metadata, then `serving` upsert + snapshot swap while still under corpus lock.
+- `delete`: corpus lock for `serving.delete_doc(...)` + snapshot swap, then DB lock for chunk cleanup + tombstone.
+- `reindex`: corpus lock only for `serving.get_all_chunks()` + snapshot swap; any admin-list DB reads happen before or after, not while waiting on the corpus lock.
+- `redeem_invite` / `log_query` / invite revoke / dashboard reads / login and signup user reads take only the DB lock.
+
+(Alternative considered: short-lived per-operation connections + `busy_timeout` — more "real" for multi-process, more churn; the single-connection + RLock is the tight single-worker choice, with connection pooling as the Postgres-era path.)
 
 ---
 
@@ -186,7 +196,7 @@ The Phase-0 `SQLiteDatastore` holds **one** connection opened with `check_same_t
 - **Datastore (sqlite tmpfile):** `_migrate` adds columns to a Phase-0-shaped DB and rehashes plaintext; create_user; generate→redeem→used; redeem of expired/used/revoked/bad-secret rejected; **concurrent redeem → exactly one success**; delete_document tombstones (+deleted_by) and removes chunks; log_query/recent_usage round-trip.
 - **Retriever:** snapshot swap leaves no torn read; with the corpus lock held around `retrieve()`, a delete cannot interleave a query, so a deleted chunk is never returned (orphan-window closed across the Chroma+BM25 boundary); reindex rebuilds BM25. A test exercises a delete concurrent with retrievals and asserts no deleted chunk surfaces.
 - **Datastore concurrency:** concurrent `log_query` / `redeem_invite` from multiple threads don't corrupt the shared connection (DB-lock serialization); the redeem transaction stays atomic under contention.
-- **Routes (TestClient, offline):** signup happy + each sad path; `require_admin` blocks members from every `/admin/*`; **CSRF token required** on each state-changing POST (missing/wrong token → rejected); delete removes from `serving` but **`eval` stays pristine** (extends the Phase-0 two-collection assertion); upload stores under a doc-id path (no filename collision); `/ask` writes exactly one usage row; dashboard renders from seeded usage.
+- **Routes (TestClient, offline):** signup happy + each sad path; `require_admin` blocks members from every `/admin/*`; **CSRF token required** on each state-changing POST, including `/ask` after it writes usage (missing/wrong token → rejected); delete removes from `serving` but **`eval` stays pristine** (extends the Phase-0 two-collection assertion); upload stores under a doc-id path (no filename collision); `/ask` writes exactly one usage row; dashboard renders from seeded usage.
 - All offline-deterministic via the existing `FakeModelProvider`; the single live `@pytest.mark.integration` test is unchanged.
 
 ---
