@@ -1,0 +1,214 @@
+# GenAcademy RAG eval gold set — 15 questions
+# Distribution: 4 answerable · 2 exact_match · 2 chunking_stress · 2 multi_document
+#               2 ambiguous · 3 unanswerable = 15
+#
+# Annotation gate applied:
+#   - Catalog rows that only list/link a resource are NOT answerable as "explain X"
+#     questions; reworded to "which resource covers X?" or moved to unanswerable.
+#   - commit_hash for awesome-agentic-ai-resources: 5dfb8691180dc4956107e86839998ba3a2ebd94f
+#   - commit_hash for Mastering-Agentic-AI-Week1:   3aa31dfede8c76422be91f2ecdbc59eddc690b1d
+#   - All line numbers are 1-indexed.
+
+# ── ANSWERABLE (4) ────────────────────────────────────────────────────────────
+
+- id: q1
+  question: "According to the Gen Academy resource pack, which week covers RAG and context
+    engineering, and what should learners be able to reason about after that week?"
+  category: answerable
+  answerable: true
+  gold:
+    - repo: awesome-agentic-ai-resources
+      file_path: README.md
+      commit_hash: 5dfb8691180dc4956107e86839998ba3a2ebd94f
+      line_start: 12
+      line_end: 12
+
+- id: q2
+  question: "What tool does the LangChain Basics project use to create a virtual environment
+    and install dependencies?"
+  category: answerable
+  answerable: true
+  gold:
+    - repo: Mastering-Agentic-AI-Week1
+      file_path: Langchain Basics/README.md
+      commit_hash: 3aa31dfede8c76422be91f2ecdbc59eddc690b1d
+      line_start: 30
+      line_end: 39
+
+- id: q3
+  question: "Which resource in the Gen Academy catalog covers chunking strategies for RAG,
+    and what chunking types does it address?"
+  category: answerable
+  answerable: true
+  gold:
+    - repo: awesome-agentic-ai-resources
+      file_path: README.md
+      commit_hash: 5dfb8691180dc4956107e86839998ba3a2ebd94f
+      line_start: 68
+      line_end: 68
+
+- id: q4
+  question: "What does the date assistant prompt in langchain_prompts.py instruct the model
+    to do, and in what format should it return the result?"
+  category: answerable
+  answerable: true
+  gold:
+    - repo: Mastering-Agentic-AI-Week1
+      file_path: Langchain Basics/langchain_prompts.py
+      commit_hash: 3aa31dfede8c76422be91f2ecdbc59eddc690b1d
+      line_start: 1
+      line_end: 10
+
+# ── EXACT_MATCH (2) ──────────────────────────────────────────────────────────
+
+- id: q5
+  question: "What is the tagline for Week 2 in the Gen Academy resource pack?"
+  category: exact_match
+  answerable: true
+  gold:
+    - repo: awesome-agentic-ai-resources
+      file_path: README.md
+      commit_hash: 5dfb8691180dc4956107e86839998ba3a2ebd94f
+      line_start: 53
+      line_end: 53
+
+- id: q6
+  question: "According to the Gen Academy catalog, what does the QLoRA paper cover?"
+  category: exact_match
+  answerable: true
+  gold:
+    - repo: awesome-agentic-ai-resources
+      file_path: README.md
+      commit_hash: 5dfb8691180dc4956107e86839998ba3a2ebd94f
+      line_start: 160
+      line_end: 160
+
+# ── CHUNKING_STRESS (2) ──────────────────────────────────────────────────────
+# Both spans are 1000+ chars wide, forcing the answer to straddle chunk boundaries.
+
+- id: q7
+  question: "List all the core prerequisite resources for Week 1 in the Gen Academy catalog,
+    including the resource name, type, and what each covers."
+  category: chunking_stress
+  answerable: true
+  gold:
+    - repo: awesome-agentic-ai-resources
+      file_path: README.md
+      commit_hash: 5dfb8691180dc4956107e86839998ba3a2ebd94f
+      line_start: 29
+      line_end: 41
+
+- id: q8
+  question: "List all the core prerequisite resources for Week 6 (AI Security and Production
+    Readiness) in the Gen Academy catalog, including what each covers."
+  category: chunking_stress
+  answerable: true
+  gold:
+    - repo: awesome-agentic-ai-resources
+      file_path: README.md
+      commit_hash: 5dfb8691180dc4956107e86839998ba3a2ebd94f
+      line_start: 185
+      line_end: 199
+
+# ── MULTI_DOCUMENT (2) ───────────────────────────────────────────────────────
+# Each question requires information from BOTH repos.
+
+- id: q9
+  question: "The Gen Academy catalog lists resources on structured outputs and function calling.
+    Show how the LangChain Basics project implements structured output extraction in practice
+    using a prompt template."
+  category: multi_document
+  answerable: true
+  gold:
+    - repo: awesome-agentic-ai-resources
+      file_path: README.md
+      commit_hash: 5dfb8691180dc4956107e86839998ba3a2ebd94f
+      line_start: 38
+      line_end: 38
+    - repo: Mastering-Agentic-AI-Week1
+      file_path: Langchain Basics/langchain_prompts.py
+      commit_hash: 3aa31dfede8c76422be91f2ecdbc59eddc690b1d
+      line_start: 13
+      line_end: 43
+
+- id: q10
+  question: "Which prompt engineering resources does the Gen Academy catalog recommend for
+    Week 1, and what Python version and dependency tool does the companion LangChain Basics
+    project require?"
+  category: multi_document
+  answerable: true
+  gold:
+    - repo: awesome-agentic-ai-resources
+      file_path: README.md
+      commit_hash: 5dfb8691180dc4956107e86839998ba3a2ebd94f
+      line_start: 36
+      line_end: 37
+    - repo: Mastering-Agentic-AI-Week1
+      file_path: Langchain Basics/README.md
+      commit_hash: 3aa31dfede8c76422be91f2ecdbc59eddc690b1d
+      line_start: 57
+      line_end: 59
+
+# ── AMBIGUOUS (2) ────────────────────────────────────────────────────────────
+# Questions that could be interpreted multiple ways; still answerable but test retrieval
+# robustness. "embeddings" appears in Week 1 outcome (line 11) AND Week 2 objective
+# (line 57); "tool use" appears in Week 1 resources (lines 31/34) and Week 3 core (line 99).
+
+- id: q11
+  question: "What does the Gen Academy resource pack say about embeddings?"
+  category: ambiguous
+  answerable: true
+  gold:
+    - repo: awesome-agentic-ai-resources
+      file_path: README.md
+      commit_hash: 5dfb8691180dc4956107e86839998ba3a2ebd94f
+      line_start: 11
+      line_end: 12
+    - repo: awesome-agentic-ai-resources
+      file_path: README.md
+      commit_hash: 5dfb8691180dc4956107e86839998ba3a2ebd94f
+      line_start: 57
+      line_end: 57
+    - repo: awesome-agentic-ai-resources
+      file_path: README.md
+      commit_hash: 5dfb8691180dc4956107e86839998ba3a2ebd94f
+      line_start: 64
+      line_end: 64
+
+- id: q12
+  question: "Where in the Gen Academy curriculum should I go to learn about tool use?"
+  category: ambiguous
+  answerable: true
+  gold:
+    - repo: awesome-agentic-ai-resources
+      file_path: README.md
+      commit_hash: 5dfb8691180dc4956107e86839998ba3a2ebd94f
+      line_start: 31
+      line_end: 31
+    - repo: awesome-agentic-ai-resources
+      file_path: README.md
+      commit_hash: 5dfb8691180dc4956107e86839998ba3a2ebd94f
+      line_start: 99
+      line_end: 99
+
+# ── UNANSWERABLE (3) ─────────────────────────────────────────────────────────
+# The corpus genuinely does not contain the answer.
+
+- id: q13
+  question: "What topics does Week 8 of the Gen Academy curriculum cover?"
+  category: unanswerable
+  answerable: false
+  gold: []
+
+- id: q14
+  question: "How does NF4 (4-bit NormalFloat) quantization actually work under the hood in
+    QLoRA?"
+  category: unanswerable
+  answerable: false
+  gold: []
+
+- id: q15
+  question: "How much does the Mastering Agentic AI certification cost?"
+  category: unanswerable
+  answerable: false
+  gold: []
