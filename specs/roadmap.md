@@ -1,8 +1,9 @@
 # Roadmap
 
 *Canonical. Phases + **MUST vs SHOULD** + risk caps. Read before expanding scope. Status: review
-incorporated (Kimchi, 2026-06-07), plan-ready pending the spike. A **demoable skeleton exists at the
-end of every phase.***
+incorporated (Kimchi, 2026-06-07); spike complete (2026-06-08). **Phase 0 and Phase 1 shipped**
+(PR #2 merged); Phase 2 rerank slice in implementation (design + independent review done). A **demoable
+skeleton exists at the end of every phase.***
 
 ## Guiding rule
 
@@ -87,11 +88,24 @@ droppable.
 
 ---
 
+## Nebius — mandatory call ✅ SATISFIED
+
+The graded eval ran on the **Nebius preset** (`GENACADEMY_PROVIDER=nebius`,
+`meta-llama/Llama-3.3-70B-Instruct`; commit `7c85f81`), and `eval/REPORT.md` carries the
+**model-swap demo** (OpenRouter ↔ Nebius, one env var). Dev default stays OpenRouter; **any
+regenerated eval report — including the Phase-2 rerank before/after — must keep running on the
+Nebius preset**, and the demo video shows the provider swap as a beat.
+
 ## Cross-phase deliverables (handout)
 
-- [ ] Working hybrid cited Q&A bot with refusal — end of Phase 0.
-- [ ] 15-question eval report (recall/precision/MRR + faithfulness + taxonomy) — end of Phase 0.
-- [ ] Demo video ≤5 min · GitHub repo · project write-up (incl. "divergences from sample solution").
+- [x] Working hybrid cited Q&A bot with refusal — end of Phase 0. *(shipped; Phase 1 product layer
+      merged, PR #2)*
+- [x] 15-question eval report (recall/precision/MRR + faithfulness + taxonomy) — `eval/REPORT.md`,
+      run on Nebius (mandatory call ✅). **Regenerate after the Phase-2 rerank lands** to capture the
+      before/after delta (mission: "measured, not asserted").
+- [ ] Demo video ≤5 min · GitHub repo link · project doc (overview, datasets, **prompts used while
+      building, iterations tried, learnings**, divergences from sample solution) · submit via the
+      cohort form.
 
 ## Resolved decisions
 

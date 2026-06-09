@@ -1,6 +1,9 @@
 # Mission
 
-*Canonical. Read before changing scope. Status: draft, pending external design review.*
+*Canonical. Read before changing scope. Status: stable. Independently reviewed at every gate —
+Kimchi design review (2026-06-07), Antigravity + Kimchi on the Phase-0 plan, Codex on Phase 1,
+multi-agent PR reviews on shipped code. Spike complete (2026-06-08, `../docs/spike-findings.md`).
+Build progress lives in `roadmap.md`.*
 
 ## Why this exists
 
@@ -24,9 +27,14 @@ demo-only extras, and the architecture should stay extensible without becoming a
 ## Success looks like
 
 - A member asks a course question and gets a **faithful, cited** answer (or a correct refusal) in
-  < ~8 s.
+  < 8 s — latency is a first-class constraint (handout rule), not a tuning afterthought.
 - The graded deliverables ship: working bot + **15-question eval report** (retrieval scores +
-  faithfulness + failure analysis) + demo + repo + write-up.
+  faithfulness + failure analysis, with the handout's three named hard cases — **ambiguous queries,
+  multi-document questions, unanswerable questions** — all represented) + **demo video ≤ 5 min** +
+  GitHub repo + project doc (overview, datasets, **prompts used while building, iterations tried,
+  learnings** — the handout asks for these explicitly).
+- Retrieval choices are **measured, not asserted**: at least one before/after eval delta (e.g.
+  hybrid vs dense-only, or rerank on/off in Phase 2) appears in the report.
 - Gen Academy admins can reuse the app for future cohorts by extending or replacing the **production
   corpus** without rewriting the core RAG, auth, or admin architecture.
 - The architecture visibly supports **swapping** data sources, model providers, and retrieval
@@ -46,6 +54,9 @@ annotation is the #1 risk — one frozen gold set protects it).
 
 ## In scope
 
+- **Handout Track 2 (code-heavy): LangChain + LangGraph**, with **≥ 1 model call via Nebius Token
+  Factory** — a cohort-mandatory requirement for both tracks (generation is the Nebius call in our
+  design; see `tech-stack.md`).
 - **Two-tier ingestion.** Phase 0 eval corpus = commit-pinned GitHub repos via Markdown/Jupyter loaders +
   a GitHub fetcher. Production = + admin-uploaded PDF/DOCX/PPTX files (and later web pages). Chunking with
   citation metadata throughout.
@@ -65,11 +76,26 @@ annotation is the #1 risk — one frozen gold set protects it).
   admin-uploaded Week-2 **PPT** may join the *production* corpus later — never the repo's code.)
 - **Integrating with NotebookLM** — it's a *sink*, not a source (no consumer API). Its curated-resource
   *list* is already the `awesome-agentic-ai-resources` catalog we ingest directly.
-- Anything that delays a **finished Phase 0** (the graded spine + eval).
+- **Building ahead of the course.** Agent loops beyond the single retrieve→grade→answer/refuse graph,
+  fine-tuning, observability platforms, production local-model serving, and security hardening belong
+  to later course weeks — Week 2 is RAG & context engineering. We leave **seams, not scope** (see below).
+
+## Course arc: seams, not scope
+
+The course continues into agents, evals & observability, fine-tuning & local models, and security &
+production. Week-2 scope stays RAG-only, but the design's existing interfaces are deliberately the
+attachment points later weeks will need — **none of this justifies building any of it now**:
+
+- The **LangGraph graph** (grade → answer/refuse) is the natural seat for agentic retrieval later.
+- The **frozen gold set + eval harness** is already a golden dataset; later eval/observability work
+  extends it rather than starting over.
+- The **refusal + citation-grounding path** is the guardrail surface a security pass would harden.
+- The **ModelProvider interface** already carries a local (Gemma) dev preset; fine-tuned or
+  self-hosted models join as config entries, not code changes.
 
 ## The one-liner (handout primer)
 
 > My RAG app helps **Gen Academy cohort members** answer **"what did the course say about X" questions**
 > from **the cohort's curated materials (a *growing*, admin-owned corpus — Gen Academy GitHub repos plus
-> uploaded PDF/DOCX/PPTX files; not a fixed file set)** in a **web chat UI** with **≥90% faithfulness**
-> and a **hard refusal path** when the answer isn't in the corpus.
+> uploaded PDF/DOCX/PPTX files; not a fixed file set)** in a **web chat UI** with **≥90% faithfulness**,
+> **answers in < 8 s**, and a **hard refusal path** when the answer isn't in the corpus.

@@ -1,7 +1,8 @@
 # Tech Stack
 
 *Canonical. Layers + **binding guardrails** (a reviewer rejects violations). Status: review incorporated
-(Kimchi, 2026-06-07), plan-ready pending spike. Deep reasoning: `../docs/architecture-decisions.md`.*
+(Kimchi, 2026-06-07); spike complete (2026-06-08, `../docs/spike-findings.md`). Deep reasoning:
+`../docs/architecture-decisions.md`.*
 
 ## Layers
 
@@ -14,7 +15,8 @@ FastAPI (one service)
 │   │                      + PDF/DOCX (PRODUCTION files) → Pptx/JSON/Python/web (later, as corpus grows)
 │   ├── Chunker iface     — FixedSizeChunker ~512/64 (P0) → SectionAwareChunker (P2)
 │   ├── ModelProvider    — embed: local sentence-transformers all-MiniLM-L6-v2 (384-dim, P0)
-│   │                      generate: Nebius (MANDATORY ≥1 call)
+│   │                      generate: OpenAI-compat presets — Nebius (MANDATORY for submission) /
+│   │                      OpenRouter (dev default) / OpenAI / local Gemma — one seam, config-only swap
 │   ├── VectorStore iface — Chroma (P0) → Pinecone (P2)
 │   ├── Retriever  iface  — Hybrid dense+BM25+RRF, top_k=5 (P0) → + cross-encoder rerank (P2)
 │   └── LangGraph graph   — retrieve → grade → {answer + citations | refuse}
@@ -50,21 +52,23 @@ FastAPI (one service)
    read** (the sample solution — reading it to inform the build is disqualifying). Eval = one frozen
    snapshot + one gold set; production tracks HEAD + uploads and never expands the gold set.
 
-## Grader mechanism (decided; spike-gated)
+## Grader mechanism (decided; spike-confirmed)
 
-Primary: **Nebius JSON-mode LLM grader** → `{"answerable": bool, "confidence": 1-5}`, fast/cheap model,
-~500 ms budget. Fallback (if JSON mode absent or latency blows the < 8 s ceiling): **max cosine
-similarity** of query vs top-k chunks against a **calibrated threshold** (tuned on 3–5 held-out Qs).
+Primary: **JSON-mode LLM grader** → `{"answerable": bool, "confidence": 1-5}`, fast/cheap model,
+~500 ms budget. **Spike confirmed JSON mode works on an open Llama model** (via OpenRouter; Nebius
+serves the same model class). Fallback (JSON mode absent or latency blows the < 8 s ceiling): **max
+cosine similarity** of query vs top-k chunks against a **calibrated threshold** (tuned on held-out Qs).
 
-## Unverified specifics (resolve in the spike before locking)
+## Spike-verified specifics (2026-06-08, `../docs/spike-findings.md`)
 
-- Nebius **chat model ID** + **JSON mode / structured-output** support (gates grader + LLM-judge format).
-- **Throughput / rate limits** (eval = 15 generate + 15 judge calls in a loop).
-- Measured **latency** (local embed + Nebius generate) vs the < 8 s ceiling.
-- **GitHub fetch + commit-pin** (eval corpus): list/fetch raw files at a fixed SHA; Markdown/Jupyter parse.
-- **19.3 MB guidebook parse quality** — now a *production* file (no longer gates the graded eval, which is
-  GitHub-Markdown) → OCR fallback / exclude-if-bad.
-- Pinecone free-tier index config (dimension must match **384**).
+- ✅ **JSON mode / structured output** — works on open Llama 3.1 70B (grader + LLM-judge format unblocked).
+- ✅ **Throughput** — 10/10 sequential calls, no throttling, on two providers.
+- ✅ **Latency** — embed 12 ms + generate ~4 s ≪ the < 8 s ceiling.
+- ✅ **GitHub fetch + commit-pin** — clean; gold-set SHAs pinned in the findings.
+- ✅ **Guidebook parse** — pypdf adequate (0.994 printable ratio); **no OCR needed**.
+- ✅ **Nebius confirm** — credit landed; the graded eval + model-swap demo ran on the Nebius preset
+  (`meta-llama/Llama-3.3-70B-Instruct`, `eval/REPORT.md`, commit `7c85f81`). Dev default stays OpenRouter.
+- 🟢 **Pinecone free-tier config** (dim must match **384**) — deferred to Phase 2 start.
 
 ## Reproducible deploy (Phase 2)
 
