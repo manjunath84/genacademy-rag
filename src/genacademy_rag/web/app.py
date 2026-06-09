@@ -3,6 +3,9 @@ form-post (HTMX-ready). create_app(retriever, provider, datastore) lets tests in
 real wiring (local embed + provider preset + ingested Chroma) happens in build_default_app()."""
 from __future__ import annotations
 
+import hmac
+import secrets
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, Request, UploadFile
@@ -12,6 +15,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from genacademy_rag.config import Settings
 from genacademy_rag.core.pipeline import QueryPipeline
+from genacademy_rag.core.security import hash_password
 from genacademy_rag.data.datastore import SQLiteDatastore
 from genacademy_rag.web.auth import authenticate
 
@@ -24,24 +28,95 @@ def create_app(*, retriever, provider, datastore, ingest_upload=None, uploads_di
     qp = QueryPipeline(retriever=retriever, provider=provider)
 
     app = FastAPI()
-    app.add_middleware(SessionMiddleware, secret_key=settings.session_secret)
+    app.add_middleware(SessionMiddleware, secret_key=settings.session_secret, same_site="lax")
 
     def current_user(request: Request) -> str | None:
         return request.session.get("email")
 
+    def csrf_token(request: Request) -> str:
+        token = request.session.get("csrf_token")
+        if not token:
+            token = secrets.token_urlsafe(32)
+            request.session["csrf_token"] = token
+        return token
+
+    def csrf_context(request: Request, extra: dict | None = None) -> dict:
+        context = {"csrf_token": csrf_token(request)}
+        if extra:
+            context.update(extra)
+        return context
+
+    def valid_csrf(request: Request, token: str | None) -> bool:
+        expected = request.session.get("csrf_token")
+        return bool(expected and token and hmac.compare_digest(expected, token))
+
+    def csrf_forbidden() -> HTMLResponse:
+        return HTMLResponse("Forbidden", status_code=403)
+
+    def require_admin(request: Request) -> dict | None:
+        email = request.session.get("email")
+        if not email:
+            return None
+        user = datastore.get_user_by_email(email)
+        if not user or user["role"] != "admin":
+            return None
+        request.session["role"] = user["role"]
+        return user
+
     @app.get("/login", response_class=HTMLResponse)
     def login_form(request: Request):
-        return TEMPLATES.TemplateResponse(request, "login.html", {"error": None})
+        return TEMPLATES.TemplateResponse(
+            request, "login.html", csrf_context(request, {"error": None})
+        )
 
     @app.post("/login")
-    def login(request: Request, email: str = Form(...), password: str = Form(...)):
+    def login(
+        request: Request,
+        email: str = Form(...),
+        password: str = Form(...),
+        csrf_token_value: str | None = Form(None, alias="csrf_token"),
+    ):
+        if not valid_csrf(request, csrf_token_value):
+            return csrf_forbidden()
         user = authenticate(datastore, email, password)
         if not user:
             return TEMPLATES.TemplateResponse(
                 request,
                 "login.html",
-                {"error": "Invalid credentials"},
+                csrf_context(request, {"error": "Invalid credentials"}),
                 status_code=401,
+            )
+        request.session["email"] = user["email"]
+        request.session["role"] = user["role"]
+        return RedirectResponse("/", status_code=303)
+
+    @app.get("/signup", response_class=HTMLResponse)
+    def signup_form(request: Request):
+        return TEMPLATES.TemplateResponse(
+            request, "signup.html", csrf_context(request, {"error": None})
+        )
+
+    @app.post("/signup")
+    def signup(
+        request: Request,
+        email: str = Form(...),
+        password: str = Form(...),
+        code: str = Form(...),
+        csrf_token_value: str | None = Form(None, alias="csrf_token"),
+    ):
+        if not valid_csrf(request, csrf_token_value):
+            return csrf_forbidden()
+        user = datastore.redeem_invite(
+            raw_code=code,
+            email=email,
+            password_hash=hash_password(password),
+        )
+        if not user:
+            return TEMPLATES.TemplateResponse(
+                request,
+                "signup.html",
+                csrf_context(request, {"error": "Invalid or expired code"}),
+                status_code=400,
             )
         request.session["email"] = user["email"]
         request.session["role"] = user["role"]
@@ -51,16 +126,78 @@ def create_app(*, retriever, provider, datastore, ingest_upload=None, uploads_di
     def home(request: Request):
         if not current_user(request):
             return RedirectResponse("/login", status_code=302)
-        return TEMPLATES.TemplateResponse(request, "chat.html", {"result": None, "question": None})
+        return TEMPLATES.TemplateResponse(
+            request, "chat.html", csrf_context(request, {"result": None, "question": None})
+        )
 
     @app.post("/ask", response_class=HTMLResponse)
-    def ask(request: Request, question: str = Form(...)):
+    def ask(
+        request: Request,
+        question: str = Form(...),
+        csrf_token_value: str | None = Form(None, alias="csrf_token"),
+    ):
         if not current_user(request):
             return RedirectResponse("/login", status_code=303)
+        if not valid_csrf(request, csrf_token_value):
+            return csrf_forbidden()
         result = qp.answer(question)
         return TEMPLATES.TemplateResponse(
-            request, "chat.html", {"result": result, "question": question}
+            request, "chat.html", csrf_context(request, {"result": result, "question": question})
         )
+
+    @app.get("/admin/invites", response_class=HTMLResponse)
+    def admin_invites(request: Request):
+        admin = require_admin(request)
+        if not admin:
+            return HTMLResponse("Forbidden", status_code=403)
+        return TEMPLATES.TemplateResponse(
+            request,
+            "admin_invites.html",
+            csrf_context(request, {"invites": datastore.list_invites(), "new_code": None}),
+        )
+
+    @app.post("/admin/invites", response_class=HTMLResponse)
+    def generate_invite(
+        request: Request,
+        role: str = Form(...),
+        expires_days: int = Form(7),
+        csrf_token_value: str | None = Form(None, alias="csrf_token"),
+    ):
+        admin = require_admin(request)
+        if not admin:
+            return HTMLResponse("Forbidden", status_code=403)
+        if not valid_csrf(request, csrf_token_value):
+            return csrf_forbidden()
+        expires_at = None
+        if expires_days > 0:
+            expires_at = (
+                datetime.now(UTC) + timedelta(days=expires_days)
+            ).strftime("%Y-%m-%d %H:%M:%S")
+        invite = datastore.generate_invite(
+            role=role,
+            created_by=admin["email"],
+            expires_at=expires_at,
+        )
+        return TEMPLATES.TemplateResponse(
+            request,
+            "admin_invites.html",
+            csrf_context(
+                request, {"invites": datastore.list_invites(), "new_code": invite["code"]}
+            ),
+        )
+
+    @app.post("/admin/invites/{code_id}/revoke")
+    def revoke_invite(
+        request: Request,
+        code_id: str,
+        csrf_token_value: str | None = Form(None, alias="csrf_token"),
+    ):
+        if not require_admin(request):
+            return HTMLResponse("Forbidden", status_code=403)
+        if not valid_csrf(request, csrf_token_value):
+            return csrf_forbidden()
+        datastore.revoke_invite(code_id)
+        return RedirectResponse("/admin/invites", status_code=303)
 
     @app.post("/upload")
     async def upload(request: Request, file: UploadFile = File(...)):  # noqa: B008

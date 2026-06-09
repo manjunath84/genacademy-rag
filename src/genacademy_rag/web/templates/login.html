@@ -4,6 +4,7 @@
 <form method="post" action="/login" class="bg-white p-8 rounded-xl shadow w-80 space-y-4">
   <h1 class="text-xl font-semibold">GenAcademy RAG</h1>
   {% if error %}<p class="text-red-600 text-sm">{{ error }}</p>{% endif %}
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
   <input name="email" placeholder="email" class="w-full border rounded px-3 py-2" value="member@genacademy.local">
   <input name="password" type="password" placeholder="password" class="w-full border rounded px-3 py-2">
   <button class="w-full bg-slate-900 text-white rounded py-2">Sign in</button>

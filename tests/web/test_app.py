@@ -1,3 +1,5 @@
+import re
+
 from starlette.testclient import TestClient
 
 
@@ -47,6 +49,20 @@ def _client(monkeypatch, tmp_path, refused=False):
     return TestClient(app)
 
 
+def _csrf(html: str) -> str:
+    match = re.search(r'name="csrf_token" value="([^"]+)"', html)
+    assert match is not None
+    return match.group(1)
+
+
+def _login(client, email="member@genacademy.local", password="member"):
+    page = client.get("/login")
+    return client.post(
+        "/login",
+        data={"email": email, "password": password, "csrf_token": _csrf(page.text)},
+    )
+
+
 def test_unauthenticated_chat_redirects_to_login(monkeypatch, tmp_path):
     c = _client(monkeypatch, tmp_path)
     r = c.get("/", follow_redirects=False)
@@ -55,8 +71,9 @@ def test_unauthenticated_chat_redirects_to_login(monkeypatch, tmp_path):
 
 def test_login_then_ask_renders_cited_answer(monkeypatch, tmp_path):
     c = _client(monkeypatch, tmp_path)
-    c.post("/login", data={"email": "member@genacademy.local", "password": "member"})
-    r = c.post("/ask", data={"question": "what is RAG?"})
+    _login(c)
+    page = c.get("/")
+    r = c.post("/ask", data={"question": "what is RAG?", "csrf_token": _csrf(page.text)})
     assert r.status_code == 200
     assert "RAG retrieves then generates." in r.text
     assert "README.md" in r.text  # source card rendered
@@ -65,9 +82,53 @@ def test_login_then_ask_renders_cited_answer(monkeypatch, tmp_path):
 
 def test_refusal_is_rendered_not_an_answer(monkeypatch, tmp_path):
     c = _client(monkeypatch, tmp_path, refused=True)
-    c.post("/login", data={"email": "member@genacademy.local", "password": "member"})
-    r = c.post("/ask", data={"question": "who won the 2050 world cup?"})
+    _login(c)
+    page = c.get("/")
+    r = c.post(
+        "/ask",
+        data={"question": "who won the 2050 world cup?", "csrf_token": _csrf(page.text)},
+    )
     assert "could not find" in r.text.lower()
+
+
+def test_signup_redeems_invite_and_logs_in(monkeypatch, tmp_path):
+    c = _client(monkeypatch, tmp_path)
+    _login(c, "admin@genacademy.local", "admin")
+    r = c.get("/admin/invites")
+    token = _csrf(r.text)
+    generated = c.post(
+        "/admin/invites",
+        data={"role": "member", "expires_days": "7", "csrf_token": token},
+    )
+    code = re.search(r"Invite code: ([^<]+)<", generated.text).group(1)
+    signup = c.get("/signup")
+    signup_token = _csrf(signup.text)
+    created = c.post(
+        "/signup",
+        data={
+            "email": "new@example.com",
+            "password": "secret",
+            "code": code,
+            "csrf_token": signup_token,
+        },
+        follow_redirects=False,
+    )
+    assert created.status_code == 303
+    home = c.get("/")
+    assert "Ask the cohort materials" in home.text
+
+
+def test_admin_routes_block_member(monkeypatch, tmp_path):
+    c = _client(monkeypatch, tmp_path)
+    _login(c)
+    assert c.get("/admin/invites", follow_redirects=False).status_code == 403
+
+
+def test_csrf_required_for_invite_generation(monkeypatch, tmp_path):
+    c = _client(monkeypatch, tmp_path)
+    _login(c, "admin@genacademy.local", "admin")
+    r = c.post("/admin/invites", data={"role": "member", "expires_days": "7"})
+    assert r.status_code == 403
 
 
 def test_admin_upload_is_searchable_and_eval_stays_pristine(monkeypatch, tmp_path):
@@ -112,7 +173,7 @@ def test_admin_upload_is_searchable_and_eval_stays_pristine(monkeypatch, tmp_pat
     app = create_app(retriever=retriever, provider=provider, datastore=datastore,
                      ingest_upload=ingest_upload, uploads_dir=tmp_path / "uploads")
     c = TestClient(app)
-    c.post("/login", data={"email": "admin@genacademy.local", "password": "admin"})
+    _login(c, "admin@genacademy.local", "admin")
     r = c.post("/upload", files={"file": ("test.pdf", pdf_bytes, "application/pdf")})
     assert r.status_code in (200, 303)                        # redirected or OK
     # eval collection stays pristine — uploads must never touch it

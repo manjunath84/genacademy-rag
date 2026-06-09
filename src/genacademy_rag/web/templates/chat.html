@@ -5,6 +5,7 @@
 <div class="max-w-2xl mx-auto p-6 space-y-4">
   <h1 class="text-2xl font-semibold">Ask the cohort materials</h1>
   <form method="post" action="/ask" class="flex gap-2">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <input name="question" value="{{ question or '' }}" placeholder="What did the course say about…?"
            class="flex-1 border rounded px-3 py-2">
     <button class="bg-slate-900 text-white rounded px-4">Ask</button>
