@@ -24,8 +24,12 @@ def test_long_password_is_supported_before_bcrypt_limit():
 
 
 def test_invite_code_is_structured_and_secret_hash_verifies():
-    code_id, secret, secret_hash = new_invite_code()
+    code = new_invite_code()
+    code_id, secret, secret_hash = code
     raw_code = f"{code_id}.{secret}"
+    assert code.id == code_id
+    assert code.secret == secret
+    assert code.secret_hash == secret_hash
     assert "." in raw_code
     assert secret not in secret_hash
     assert is_bcrypt_hash(secret_hash)

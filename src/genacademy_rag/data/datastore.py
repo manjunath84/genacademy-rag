@@ -285,7 +285,7 @@ class SQLiteDatastore:
             if row is None:
                 return False
             doc = dict(row)
-            if doc["uploaded_by"] is None:
+            if not doc["uploaded_by"]:
                 return False
             self._conn.execute("DELETE FROM chunks_meta WHERE doc_id=?", (doc_id,))
             if doc["status"] != "deleted":

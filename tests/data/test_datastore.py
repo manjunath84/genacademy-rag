@@ -90,6 +90,47 @@ def test_migrate_adds_phase1_columns_and_hashes_plaintext_users(tmp_path):
     assert verify_password("admin", admin["password"])
 
 
+def test_migration_reopen_is_idempotent_and_does_not_double_hash(tmp_path):
+    db_path = tmp_path / "phase0.sqlite"
+    conn = sqlite3.connect(db_path)
+    conn.executescript(
+        """
+        CREATE TABLE users (
+            id INTEGER PRIMARY KEY, email TEXT UNIQUE NOT NULL,
+            role TEXT NOT NULL CHECK(role IN ('admin','member')),
+            password TEXT NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
+        CREATE TABLE documents (
+            id TEXT PRIMARY KEY, title TEXT, source_type TEXT, repo TEXT, file_path TEXT,
+            commit_hash TEXT, filename TEXT, uploaded_by TEXT, status TEXT DEFAULT 'indexed',
+            n_chunks INTEGER DEFAULT 0, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
+        CREATE TABLE chunks_meta (
+            id TEXT PRIMARY KEY, doc_id TEXT, ordinal INTEGER, page_or_section TEXT,
+            line_start INTEGER, line_end INTEGER, char_start INTEGER, char_end INTEGER,
+            text_preview TEXT);
+        INSERT INTO users(email, role, password) VALUES
+            ('admin@genacademy.local', 'admin', 'admin');
+        """
+    )
+    conn.commit()
+    conn.close()
+
+    ds = SQLiteDatastore(db_path)
+    first_columns = [row["name"] for row in ds.table_info("documents")]
+    first_hash = ds.get_user_by_email("admin@genacademy.local")["password"]
+    ds._conn.close()
+
+    reopened = SQLiteDatastore(db_path)
+    second_columns = [row["name"] for row in reopened.table_info("documents")]
+    second_hash = reopened.get_user_by_email("admin@genacademy.local")["password"]
+
+    assert second_columns == first_columns
+    assert second_columns.count("deleted_at") == 1
+    assert second_columns.count("deleted_by") == 1
+    assert second_columns.count("stored_path") == 1
+    assert second_hash == first_hash
+    assert verify_password("admin", second_hash)
+
+
 def test_seed_users_stores_bcrypt_hashes(tmp_path):
     ds = SQLiteDatastore(tmp_path / "t.sqlite")
     ds.seed_users()
@@ -167,6 +208,18 @@ def test_redeem_rejects_bad_secret_revoked_and_expired(tmp_path):
     )
 
 
+def test_redeem_unknown_well_formed_code_id_returns_generic_failure(tmp_path):
+    ds = SQLiteDatastore(tmp_path / "t.sqlite")
+
+    user = ds.redeem_invite(
+        raw_code="unknown-id.well-formed-secret",
+        email="unknown@example.com",
+        password_hash=hash_password("pw"),
+    )
+
+    assert user is None
+
+
 def test_concurrent_redeem_allows_exactly_one_winner(tmp_path):
     ds = SQLiteDatastore(tmp_path / "t.sqlite")
     invite = ds.generate_invite(role="member", created_by="admin@genacademy.local", expires_at=None)
@@ -212,6 +265,22 @@ def test_document_delete_is_uploaded_only_and_idempotent(tmp_path):
     assert deleted["status"] == "deleted"
     assert deleted["deleted_by"] == "admin@genacademy.local"
     assert ds.get_chunks_for_doc("upload") == []
+
+
+def test_document_delete_treats_empty_uploaded_by_as_undeletable(tmp_path):
+    ds = SQLiteDatastore(tmp_path / "t.sqlite")
+    ds.add_document(
+        doc_id="course-empty",
+        title="Course",
+        source_type="github",
+        uploaded_by="",
+        n_chunks=1,
+    )
+    ds.add_chunks_meta([_chunk(0, "course-empty")])
+
+    assert not ds.delete_document("course-empty", deleted_by="admin@genacademy.local")
+    assert ds.get_document("course-empty")["status"] == "indexed"
+    assert len(ds.get_chunks_for_doc("course-empty")) == 1
 
 
 def test_usage_log_round_trip(tmp_path):

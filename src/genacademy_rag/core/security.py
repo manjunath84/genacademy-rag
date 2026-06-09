@@ -4,10 +4,17 @@ from __future__ import annotations
 import base64
 import hashlib
 import secrets
+from typing import NamedTuple
 
 import bcrypt
 
 BCRYPT_PREFIXES = ("$2a$", "$2b$", "$2y$")
+
+
+class NewInviteCode(NamedTuple):
+    id: str
+    secret: str
+    secret_hash: str
 
 
 def _bcrypt_input(value: str) -> bytes:
@@ -42,10 +49,10 @@ def verify_password(password: str, password_hash: str) -> bool:
     return verify_secret(password, password_hash)
 
 
-def new_invite_code() -> tuple[str, str, str]:
+def new_invite_code() -> NewInviteCode:
     code_id = secrets.token_urlsafe(8)
     secret = secrets.token_urlsafe(24)
-    return code_id, secret, hash_secret(secret)
+    return NewInviteCode(id=code_id, secret=secret, secret_hash=hash_secret(secret))
 
 
 def split_invite_code(raw_code: str) -> tuple[str, str] | None:
