@@ -8,6 +8,13 @@ from genacademy_rag.core.graph import build_graph
 from genacademy_rag.core.types import Chunk, Citation, Document
 
 
+@dataclass(frozen=True)
+class PreparedIngest:
+    doc: Document
+    chunks: list[Chunk]
+    embeddings: list[list[float]]
+
+
 class IngestPipeline:
     def __init__(self, *, chunker, provider, store, datastore):
         self._chunker = chunker
@@ -15,13 +22,20 @@ class IngestPipeline:
         self._store = store
         self._datastore = datastore
 
-    def ingest(self, docs: list[Document]) -> int:
-        total = 0
+    def prepare(self, docs: list[Document]) -> list[PreparedIngest]:
+        prepared = []
         for doc in docs:
             chunks: list[Chunk] = self._chunker.chunk(doc)
             if not chunks:
                 continue
             embeddings = self._provider.embed([c.text for c in chunks])
+            prepared.append(PreparedIngest(doc=doc, chunks=chunks, embeddings=embeddings))
+        return prepared
+
+    def commit(self, prepared: list[PreparedIngest]) -> int:
+        total = 0
+        for item in prepared:
+            doc = item.doc
             self._datastore.add_document(
                 doc_id=doc.doc_id,
                 title=doc.title,
@@ -32,12 +46,15 @@ class IngestPipeline:
                 filename=doc.filename,
                 uploaded_by=doc.uploaded_by,
                 stored_path=doc.stored_path,
-                n_chunks=len(chunks),
+                n_chunks=len(item.chunks),
             )
-            self._datastore.add_chunks_meta(chunks)
-            self._store.upsert(chunks, embeddings)
-            total += len(chunks)
+            self._datastore.add_chunks_meta(item.chunks)
+            self._store.upsert(item.chunks, item.embeddings)
+            total += len(item.chunks)
         return total
+
+    def ingest(self, docs: list[Document]) -> int:
+        return self.commit(self.prepare(docs))
 
 
 @dataclass(frozen=True)

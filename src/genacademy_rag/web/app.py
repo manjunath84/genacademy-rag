@@ -4,6 +4,7 @@ real wiring (local embed + provider preset + ingested Chroma) happens in build_d
 from __future__ import annotations
 
 import hmac
+import logging
 import secrets
 import time
 from dataclasses import replace
@@ -22,6 +23,7 @@ from genacademy_rag.data.datastore import SQLiteDatastore
 from genacademy_rag.web.auth import authenticate
 
 TEMPLATES = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
+logger = logging.getLogger(__name__)
 
 
 def create_app(
@@ -154,15 +156,18 @@ def create_app(
         start = time.perf_counter()
         result = qp.answer(question)
         latency_ms = int((time.perf_counter() - start) * 1000)
-        datastore.log_query(
-            user_email=current_user(request),
-            question=question,
-            refused=result.refused,
-            confidence=result.confidence,
-            used_fallback=result.used_fallback,
-            n_citations=len(result.citations),
-            latency_ms=latency_ms,
-        )
+        try:
+            datastore.log_query(
+                user_email=current_user(request),
+                question=question,
+                refused=result.refused,
+                confidence=result.confidence,
+                used_fallback=result.used_fallback,
+                n_citations=len(result.citations),
+                latency_ms=latency_ms,
+            )
+        except Exception:
+            logger.exception("usage log_query failed (question=%r)", question)
         return TEMPLATES.TemplateResponse(
             request, "chat.html", csrf_context(request, {"result": result, "question": question})
         )
@@ -291,7 +296,7 @@ def create_app(
         if not valid_csrf(request, csrf_token_value):
             return csrf_forbidden()
         doc = datastore.get_document(doc_id)
-        if not doc or doc["uploaded_by"] is None:
+        if not doc or not doc["uploaded_by"]:
             return HTMLResponse("Forbidden", status_code=403)
         if serving_store is not None:
             def mutation():
@@ -347,8 +352,10 @@ def build_default_app() -> FastAPI:
     uploads_dir.mkdir(parents=True, exist_ok=True)
 
     def ingest_upload(doc):
+        prepared = pipe.prepare([doc])
+
         def mutation():
-            pipe.ingest([doc])
+            pipe.commit(prepared)
             return serving.get_all_chunks()
 
         retriever.mutate_corpus(mutation)

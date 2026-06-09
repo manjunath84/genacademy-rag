@@ -1,9 +1,20 @@
+import logging
 import re
 
+import pytest
 from starlette.testclient import TestClient
 
 
-def _client(monkeypatch, tmp_path, refused=False):
+def _client(
+    monkeypatch,
+    tmp_path,
+    refused=False,
+    *,
+    datastore=None,
+    ingest_upload=None,
+    serving_store=None,
+    uploads_dir=None,
+):
     monkeypatch.setenv("GENACADEMY_SESSION_SECRET", "test-secret")
     from genacademy_rag.data.datastore import SQLiteDatastore
     from genacademy_rag.web.app import create_app
@@ -44,8 +55,16 @@ def _client(monkeypatch, tmp_path, refused=False):
     provider = FakeModelProvider(
         canned_json=canned, canned_answer="RAG retrieves then generates."
     )
-    datastore = SQLiteDatastore(tmp_path / "t.sqlite")
-    app = create_app(retriever=_Retriever(), provider=provider, datastore=datastore)
+    if datastore is None:
+        datastore = SQLiteDatastore(tmp_path / "t.sqlite")
+    app = create_app(
+        retriever=_Retriever(),
+        provider=provider,
+        datastore=datastore,
+        ingest_upload=ingest_upload,
+        serving_store=serving_store,
+        uploads_dir=uploads_dir,
+    )
     return TestClient(app)
 
 
@@ -61,6 +80,24 @@ def _login(client, email="member@genacademy.local", password="member"):
         "/login",
         data={"email": email, "password": password, "csrf_token": _csrf(page.text)},
     )
+
+
+def _admin_post(client, path: str, *, csrf_token: str | None = None):
+    data = {}
+    if path == "/admin/invites":
+        data = {"role": "member", "expires_days": "7"}
+    elif path == "/admin/documents/delete":
+        data = {"doc_id": "pdf/abc"}
+    if csrf_token is not None:
+        data["csrf_token"] = csrf_token
+    if path == "/upload":
+        return client.post(
+            path,
+            data=data,
+            files={"file": ("test.pdf", b"%PDF-1.4", "application/pdf")},
+            follow_redirects=False,
+        )
+    return client.post(path, data=data, follow_redirects=False)
 
 
 def test_unauthenticated_chat_redirects_to_login(monkeypatch, tmp_path):
@@ -122,6 +159,79 @@ def test_admin_routes_block_member(monkeypatch, tmp_path):
     c = _client(monkeypatch, tmp_path)
     _login(c)
     assert c.get("/admin/invites", follow_redirects=False).status_code == 403
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/admin/documents/delete",
+        "/admin/documents/reindex",
+        "/admin/invites/unknown/revoke",
+        "/upload",
+    ],
+)
+@pytest.mark.parametrize("csrf_token", [None, "not-the-session-token"])
+def test_destructive_admin_posts_reject_missing_or_invalid_csrf(
+    monkeypatch, tmp_path, path, csrf_token
+):
+    c = _client(
+        monkeypatch,
+        tmp_path,
+        ingest_upload=lambda doc: None,
+        uploads_dir=tmp_path / "uploads",
+    )
+    _login(c, "admin@genacademy.local", "admin")
+    c.get("/admin/documents")
+
+    r = _admin_post(c, path, csrf_token=csrf_token)
+
+    assert r.status_code == 403
+
+
+@pytest.mark.parametrize("actor", ["member", "anonymous"])
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/admin/invites",
+        "/admin/documents/delete",
+        "/admin/documents/reindex",
+        "/admin/invites/unknown/revoke",
+        "/upload",
+    ],
+)
+def test_member_and_anonymous_users_are_blocked_from_admin_posts(
+    monkeypatch, tmp_path, actor, path
+):
+    c = _client(
+        monkeypatch,
+        tmp_path,
+        ingest_upload=lambda doc: None,
+        uploads_dir=tmp_path / "uploads",
+    )
+    if actor == "member":
+        _login(c)
+
+    r = _admin_post(c, path)
+
+    if path == "/upload":
+        assert r.status_code == 303
+        assert "/login" in r.headers["location"]
+    else:
+        assert r.status_code == 403
+
+
+@pytest.mark.parametrize("actor", ["member", "anonymous"])
+@pytest.mark.parametrize("path", ["/admin/documents", "/admin/dashboard"])
+def test_member_and_anonymous_users_are_blocked_from_admin_gets(
+    monkeypatch, tmp_path, actor, path
+):
+    c = _client(monkeypatch, tmp_path)
+    if actor == "member":
+        _login(c)
+
+    r = c.get(path, follow_redirects=False)
+
+    assert r.status_code == 403
 
 
 def test_csrf_required_for_invite_generation(monkeypatch, tmp_path):
@@ -311,6 +421,58 @@ def test_delete_route_removes_serving_doc_and_leaves_eval_pristine(monkeypatch, 
     assert datastore.get_document("pdf/abc")["status"] == "deleted"
 
 
+def test_delete_route_treats_empty_uploaded_by_as_undeletable(monkeypatch, tmp_path):
+    from genacademy_rag.data.datastore import SQLiteDatastore
+    from genacademy_rag.web.app import create_app
+    from tests.conftest import FakeModelProvider
+
+    monkeypatch.setenv("GENACADEMY_SESSION_SECRET", "test-secret")
+    datastore = SQLiteDatastore(tmp_path / "t.sqlite")
+    provider = FakeModelProvider()
+    deleted = []
+
+    class _Retriever:
+        def retrieve(self, q):
+            return []
+
+        def mutate_corpus(self, mutation):
+            mutation()
+
+    class _Serving:
+        def delete_doc(self, doc_id):
+            deleted.append(doc_id)
+
+        def get_all_chunks(self):
+            return []
+
+    datastore.add_document(
+        doc_id="course-empty",
+        title="Course",
+        source_type="github",
+        uploaded_by="",
+        n_chunks=1,
+    )
+    app = create_app(
+        retriever=_Retriever(),
+        provider=provider,
+        datastore=datastore,
+        serving_store=_Serving(),
+    )
+    c = TestClient(app)
+    _login(c, "admin@genacademy.local", "admin")
+    page = c.get("/admin/documents")
+
+    r = c.post(
+        "/admin/documents/delete",
+        data={"doc_id": "course-empty", "csrf_token": _csrf(page.text)},
+        follow_redirects=False,
+    )
+
+    assert r.status_code == 403
+    assert deleted == []
+    assert datastore.get_document("course-empty")["status"] == "indexed"
+
+
 def test_ask_requires_csrf_and_writes_usage_row(monkeypatch, tmp_path):
     c = _client(monkeypatch, tmp_path)
     _login(c)
@@ -323,6 +485,145 @@ def test_ask_requires_csrf_and_writes_usage_row(monkeypatch, tmp_path):
     assert len(rows) == 1
     assert rows[0]["question"] == "what is RAG?"
     assert rows[0]["user_email"] == "member@genacademy.local"
+    assert rows[0]["refused"] == 0
+    assert rows[0]["used_fallback"] == 0
+    assert rows[0]["n_citations"] == 1
+    assert rows[0]["latency_ms"] >= 0
+
+
+def test_ask_logs_refused_usage_row(monkeypatch, tmp_path):
+    c = _client(monkeypatch, tmp_path, refused=True)
+    _login(c)
+    page = c.get("/")
+
+    r = c.post(
+        "/ask",
+        data={"question": "who won the 2050 world cup?", "csrf_token": _csrf(page.text)},
+    )
+
+    assert r.status_code == 200
+    rows = c.app.state.datastore.recent_usage(limit=10)
+    assert len(rows) == 1
+    assert rows[0]["question"] == "who won the 2050 world cup?"
+    assert rows[0]["refused"] == 1
+    assert rows[0]["used_fallback"] == 0
+    assert rows[0]["n_citations"] == 1
+    assert rows[0]["latency_ms"] >= 0
+
+
+def test_ask_returns_answer_when_usage_logging_fails(monkeypatch, tmp_path, caplog):
+    from genacademy_rag.data.datastore import SQLiteDatastore
+
+    class FailingLogDatastore(SQLiteDatastore):
+        def log_query(self, **kwargs):
+            raise RuntimeError("database is locked")
+
+    datastore = FailingLogDatastore(tmp_path / "t.sqlite")
+    c = _client(monkeypatch, tmp_path, datastore=datastore)
+    _login(c)
+    page = c.get("/")
+
+    with caplog.at_level(logging.ERROR, logger="genacademy_rag.web.app"):
+        r = c.post("/ask", data={"question": "what is RAG?", "csrf_token": _csrf(page.text)})
+
+    assert r.status_code == 200
+    assert "RAG retrieves then generates." in r.text
+    assert "usage log_query failed" in caplog.text
+
+
+def test_default_upload_embeds_before_corpus_mutation_lock(monkeypatch, tmp_path):
+    import genacademy_rag.config as config_module
+    import genacademy_rag.core.loaders.pdf_loader as pdf_loader
+    import genacademy_rag.core.providers as providers_module
+    import genacademy_rag.core.retriever as retriever_module
+    import genacademy_rag.core.vectorstore as vectorstore_module
+    from genacademy_rag.config import Settings
+    from genacademy_rag.core.types import Document
+    from genacademy_rag.web.app import build_default_app
+
+    state = {"in_lock": False, "embed_in_lock": [], "upsert_in_lock": []}
+    settings = Settings(
+        provider="openrouter",
+        gen_base_url="",
+        gen_api_key="",
+        gen_model="",
+        embed_model="",
+        top_k=5,
+        chunk_size=50,
+        chunk_overlap=5,
+        chroma_dir=tmp_path / "chroma",
+        sqlite_path=tmp_path / "t.sqlite",
+        session_secret="test-secret",
+    )
+
+    class Provider:
+        def embed(self, texts):
+            if texts:
+                state["embed_in_lock"].append(state["in_lock"])
+            return [[0.1] * 384 for _ in texts]
+
+        def generate(self, messages, *, json_mode=False, max_tokens=512, temperature=0.0):
+            return '{"answerable": true, "confidence": 5}' if json_mode else "answer"
+
+    class Store:
+        def __init__(self, *, persist_dir, collection):
+            self.collection = collection
+            self.chunks = []
+
+        def get_all_chunks(self):
+            return list(self.chunks)
+
+        def upsert(self, chunks, embeddings):
+            if chunks:
+                state["upsert_in_lock"].append(state["in_lock"])
+            self.chunks.extend(chunks)
+
+    class Retriever:
+        def __init__(self, *, store, provider, all_chunks, top_k):
+            self.store = store
+
+        def retrieve(self, query):
+            return []
+
+        def mutate_corpus(self, mutation):
+            state["in_lock"] = True
+            try:
+                mutation()
+            finally:
+                state["in_lock"] = False
+
+    def fake_load_pdf_bytes(*, filename, raw_bytes, uploaded_by=None, stored_path=None):
+        return Document(
+            doc_id="pdf/abc",
+            title=filename,
+            source_type="pdf",
+            text="Gen Academy upload about retrieval augmented generation.",
+            filename=filename,
+            uploaded_by=uploaded_by,
+            stored_path=stored_path,
+        )
+
+    monkeypatch.setattr(Settings, "from_env", classmethod(lambda cls: settings))
+    monkeypatch.setattr(config_module, "DATA_DIR", tmp_path / "data")
+    monkeypatch.setattr(providers_module, "build_provider", lambda s: Provider())
+    monkeypatch.setattr(vectorstore_module, "ChromaStore", Store)
+    monkeypatch.setattr(retriever_module, "HybridRetriever", Retriever)
+    monkeypatch.setattr(pdf_loader, "load_pdf_bytes", fake_load_pdf_bytes)
+
+    c = TestClient(build_default_app())
+    _login(c, "admin@genacademy.local", "admin")
+    page = c.get("/admin/documents")
+
+    r = c.post(
+        "/upload",
+        data={"csrf_token": _csrf(page.text)},
+        files={"file": ("test.pdf", b"%PDF-1.4", "application/pdf")},
+        follow_redirects=False,
+    )
+
+    assert r.status_code == 303
+    assert state["embed_in_lock"] == [False]
+    assert state["upsert_in_lock"] == [True]
 
 
 def test_dashboard_renders_usage_summary(monkeypatch, tmp_path):
