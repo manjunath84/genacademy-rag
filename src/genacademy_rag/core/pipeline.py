@@ -1,7 +1,10 @@
 """Pipelines. IngestPipeline (offline): Document → chunk → embed → store + record metadata.
-QueryPipeline (online, Task 11): question → graph → {answer, citations}. Both pure."""
+QueryPipeline (online): question → graph → {answer, citations}. Both pure."""
 from __future__ import annotations
 
+from dataclasses import dataclass
+
+from genacademy_rag.core.graph import build_graph
 from genacademy_rag.core.types import Chunk, Document
 
 
@@ -33,3 +36,27 @@ class IngestPipeline:
             self._datastore.add_chunks_meta(chunks)
             total += len(chunks)
         return total
+
+
+@dataclass(frozen=True)
+class QueryResult:
+    answer: str
+    citations: list  # list[Citation]
+    refused: bool
+    confidence: int
+
+
+class QueryPipeline:
+    def __init__(self, *, retriever, provider, cosine_threshold: float = 0.2):
+        self._graph = build_graph(
+            retriever=retriever, provider=provider, cosine_threshold=cosine_threshold
+        )
+
+    def answer(self, question: str) -> QueryResult:
+        out = self._graph.invoke({"question": question})
+        return QueryResult(
+            answer=out["answer"],
+            citations=out.get("citations", []),
+            refused=out["refused"],
+            confidence=out.get("confidence", 0),
+        )
