@@ -39,6 +39,11 @@ class HybridRetriever:
         self._ids = [c.chunk_id for c in all_chunks]
         self._bm25 = BM25Okapi([_tokenize(c.text) for c in all_chunks])
 
+    def reindex(self, all_chunks: list[Chunk]) -> None:
+        self._chunks_by_id = {c.chunk_id: c for c in all_chunks}
+        self._ids = [c.chunk_id for c in all_chunks]
+        self._bm25 = BM25Okapi([_tokenize(c.text) for c in all_chunks])
+
     def retrieve(self, query: str) -> list[RetrievedChunk]:
         qvec = self._provider.embed([query])[0]
         dense_hits = self._store.query(qvec, top_k=self._candidate_k)   # list[(id, cosine_sim)]

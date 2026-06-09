@@ -48,6 +48,22 @@ def test_hybrid_retriever_surfaces_exact_keyword_via_bm25(fake_provider):
     assert any("QLoRA" in r.chunk.text for r in results)
 
 
+def test_reindex_makes_new_chunks_searchable(fake_provider):
+    c0 = _chunk(0, "original chunk about embeddings")
+
+    class _Store:
+        def __init__(self): self.chunks = [c0]
+        def query(self, qvec, top_k): return [(c.chunk_id, 0.5) for c in self.chunks][:top_k]
+        def get_chunk(self, cid): return next(c for c in self.chunks if c.chunk_id == cid)
+
+    store = _Store()
+    retr = HybridRetriever(store=store, provider=fake_provider, all_chunks=[c0], top_k=5)
+    new = _chunk(1, "uploaded chunk about Pinecone")
+    store.chunks.append(new)
+    retr.reindex(store.chunks)
+    assert any("Pinecone" in r.chunk.text for r in retr.retrieve("Pinecone"))
+
+
 def test_retrieved_score_is_cosine_similarity_not_rrf(fake_provider):
     # Regression guard: score must be the cosine sim (usable by the grader's threshold fallback),
     # NOT the tiny RRF score (~0.03) that would make the cosine fallback refuse everything.

@@ -35,3 +35,11 @@ def test_line_numbers_are_one_based_and_correct():
     chunks = FixedSizeChunker(chunk_size=40, overlap=0).chunk(doc)
     assert chunks[0].citation.line_start == 1
     assert all(c.citation.line_start >= 1 for c in chunks)
+
+
+def test_pdf_pages_become_page_citations():
+    text = "page one text\n\f\npage two text\n\f\npage three text"
+    doc = Document(doc_id="g", title="g.pdf", source_type="pdf", text=text, filename="g.pdf")
+    chunks = FixedSizeChunker(chunk_size=12, overlap=0).chunk(doc)
+    pages = {c.citation.page_or_section for c in chunks}
+    assert "page 1" in pages and "page 3" in pages

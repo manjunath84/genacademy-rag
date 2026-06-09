@@ -33,6 +33,7 @@ class FixedSizeChunker:
                 line += 1
         line_at[n] = line
 
+        has_pages = "\f" in text
         step = self.chunk_size - self.overlap
         chunks: list[Chunk] = []
         ordinal = 0
@@ -40,11 +41,15 @@ class FixedSizeChunker:
         while start < n:
             end = min(start + self.chunk_size, n)
             piece = text[start:end]
+            page_or_section = (
+                f"page {text.count(chr(12), 0, start) + 1}" if has_pages else None
+            )
             citation = Citation(
                 doc_id=doc.doc_id, title=doc.title, source_type=doc.source_type,
                 repo=doc.repo, file_path=doc.file_path, commit_hash=doc.commit_hash,
                 line_start=line_at[start], line_end=line_at[max(start, end - 1)],
                 char_start=start, char_end=end,
+                page_or_section=page_or_section,
             )
             chunks.append(Chunk(chunk_id=f"{doc.doc_id}::{ordinal}", doc_id=doc.doc_id,
                                 ordinal=ordinal, text=piece, citation=citation))
