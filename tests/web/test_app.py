@@ -174,7 +174,138 @@ def test_admin_upload_is_searchable_and_eval_stays_pristine(monkeypatch, tmp_pat
                      ingest_upload=ingest_upload, uploads_dir=tmp_path / "uploads")
     c = TestClient(app)
     _login(c, "admin@genacademy.local", "admin")
-    r = c.post("/upload", files={"file": ("test.pdf", pdf_bytes, "application/pdf")})
+    page = c.get("/admin/documents")
+    r = c.post(
+        "/upload",
+        data={"csrf_token": _csrf(page.text)},
+        files={"file": ("test.pdf", pdf_bytes, "application/pdf")},
+    )
     assert r.status_code in (200, 303)                        # redirected or OK
     # eval collection stays pristine — uploads must never touch it
     assert eval_store.get_all_chunks() == []
+
+
+def test_upload_uses_content_hash_path_and_avoids_filename_collision(monkeypatch, tmp_path):
+    import io
+    from pathlib import Path
+
+    from pypdf import PdfWriter
+
+    from genacademy_rag.core.chunker import FixedSizeChunker
+    from genacademy_rag.core.pipeline import IngestPipeline
+    from genacademy_rag.core.vectorstore import ChromaStore
+    from genacademy_rag.data.datastore import SQLiteDatastore
+    from genacademy_rag.web.app import create_app
+    from tests.conftest import FakeModelProvider
+
+    monkeypatch.setenv("GENACADEMY_SESSION_SECRET", "test-secret")
+    provider = FakeModelProvider()
+    datastore = SQLiteDatastore(tmp_path / "t.sqlite")
+    serving = ChromaStore(persist_dir=tmp_path / "chroma", collection="serving")
+
+    class _Retriever:
+        def retrieve(self, q):
+            return []
+
+        def mutate_corpus(self, mutation):
+            mutation()
+
+    pipe = IngestPipeline(
+        chunker=FixedSizeChunker(chunk_size=100, overlap=10),
+        provider=provider,
+        store=serving,
+        datastore=datastore,
+    )
+
+    def ingest_upload(doc):
+        pipe.ingest([doc])
+
+    app = create_app(
+        retriever=_Retriever(),
+        provider=provider,
+        datastore=datastore,
+        ingest_upload=ingest_upload,
+        serving_store=serving,
+        uploads_dir=tmp_path / "uploads",
+    )
+    c = TestClient(app)
+    _login(c, "admin@genacademy.local", "admin")
+    page = c.get("/admin/documents")
+    token = _csrf(page.text)
+    writer = PdfWriter()
+    writer.add_blank_page(width=200, height=200)
+    first = io.BytesIO()
+    writer.write(first)
+    writer = PdfWriter()
+    writer.add_blank_page(width=210, height=210)
+    second = io.BytesIO()
+    writer.write(second)
+    c.post(
+        "/upload",
+        data={"csrf_token": token},
+        files={"file": ("same.pdf", first.getvalue(), "application/pdf")},
+    )
+    c.post(
+        "/upload",
+        data={"csrf_token": token},
+        files={"file": ("same.pdf", second.getvalue(), "application/pdf")},
+    )
+    stored = list((tmp_path / "uploads").glob("*.pdf"))
+    assert len(stored) == 2
+    assert all(Path(p).name != "same.pdf" for p in stored)
+
+
+def test_delete_route_removes_serving_doc_and_leaves_eval_pristine(monkeypatch, tmp_path):
+    from genacademy_rag.data.datastore import SQLiteDatastore
+    from genacademy_rag.web.app import create_app
+    from tests.conftest import FakeModelProvider
+
+    monkeypatch.setenv("GENACADEMY_SESSION_SECRET", "test-secret")
+    datastore = SQLiteDatastore(tmp_path / "t.sqlite")
+    provider = FakeModelProvider()
+    deleted = []
+    reindexed = []
+
+    class _Retriever:
+        def retrieve(self, q):
+            return []
+
+        def mutate_corpus(self, mutation):
+            reindexed.append(mutation())
+
+    class _Serving:
+        def delete_doc(self, doc_id):
+            deleted.append(doc_id)
+
+        def get_all_chunks(self):
+            return []
+
+    datastore.add_document(
+        doc_id="pdf/abc",
+        title="notes.pdf",
+        source_type="pdf",
+        filename="notes.pdf",
+        uploaded_by="admin@genacademy.local",
+        stored_path=str(tmp_path / "notes.pdf"),
+        n_chunks=1,
+    )
+    app = create_app(
+        retriever=_Retriever(),
+        provider=provider,
+        datastore=datastore,
+        serving_store=_Serving(),
+        uploads_dir=tmp_path / "uploads",
+    )
+    c = TestClient(app)
+    _login(c, "admin@genacademy.local", "admin")
+    page = c.get("/admin/documents")
+    token = _csrf(page.text)
+    r = c.post(
+        "/admin/documents/delete",
+        data={"doc_id": "pdf/abc", "csrf_token": token},
+        follow_redirects=False,
+    )
+    assert r.status_code == 303
+    assert deleted == ["pdf/abc"]
+    assert reindexed == [[]]
+    assert datastore.get_document("pdf/abc")["status"] == "deleted"

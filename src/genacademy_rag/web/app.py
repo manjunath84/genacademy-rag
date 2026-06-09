@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import hmac
 import secrets
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -22,7 +23,15 @@ from genacademy_rag.web.auth import authenticate
 TEMPLATES = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 
 
-def create_app(*, retriever, provider, datastore, ingest_upload=None, uploads_dir=None) -> FastAPI:
+def create_app(
+    *,
+    retriever,
+    provider,
+    datastore,
+    ingest_upload=None,
+    serving_store=None,
+    uploads_dir=None,
+) -> FastAPI:
     settings = Settings.from_env()
     datastore.seed_users()
     qp = QueryPipeline(retriever=retriever, provider=provider)
@@ -200,21 +209,86 @@ def create_app(*, retriever, provider, datastore, ingest_upload=None, uploads_di
         return RedirectResponse("/admin/invites", status_code=303)
 
     @app.post("/upload")
-    async def upload(request: Request, file: UploadFile = File(...)):  # noqa: B008
-        if request.session.get("role") != "admin" or ingest_upload is None:
+    async def upload(
+        request: Request,
+        file: UploadFile = File(...),  # noqa: B008
+        csrf_token_value: str | None = Form(None, alias="csrf_token"),
+    ):
+        admin = require_admin(request)
+        if not admin or ingest_upload is None:
             return RedirectResponse("/login", status_code=303)
+        if not valid_csrf(request, csrf_token_value):
+            return csrf_forbidden()
         raw = await file.read()
         # file.filename is attacker-controlled: strip to a basename so "../../etc/x" can't escape
         # uploads_dir, and supply a fallback since Starlette permits a None filename.
         safe_name = Path(file.filename or "upload.pdf").name
+        from genacademy_rag.core.loaders.pdf_loader import load_pdf_bytes
+
+        doc = load_pdf_bytes(filename=safe_name, raw_bytes=raw, uploaded_by=admin["email"])
+        suffix = Path(safe_name).suffix.lower() or ".pdf"
+        stored_name = doc.doc_id.replace("/", "_") + suffix
+        stored_path = None
         if uploads_dir is not None:
             uploads_dir.mkdir(parents=True, exist_ok=True)
-            (uploads_dir / safe_name).write_bytes(raw)
-        from genacademy_rag.core.loaders.pdf_loader import load_pdf_bytes
-        doc = load_pdf_bytes(filename=safe_name, raw_bytes=raw,
-                             uploaded_by=request.session.get("email"))
-        ingest_upload(doc)
-        return RedirectResponse("/", status_code=303)
+            stored_path = uploads_dir / stored_name
+            stored_path.write_bytes(raw)
+        doc = replace(doc, stored_path=str(stored_path) if stored_path else None)
+        try:
+            ingest_upload(doc)
+        except Exception:
+            if stored_path is not None:
+                stored_path.unlink(missing_ok=True)
+            raise
+        return RedirectResponse("/admin/documents", status_code=303)
+
+    @app.get("/admin/documents", response_class=HTMLResponse)
+    def admin_documents(request: Request):
+        if not require_admin(request):
+            return HTMLResponse("Forbidden", status_code=403)
+        return TEMPLATES.TemplateResponse(
+            request,
+            "admin_documents.html",
+            csrf_context(request, {"documents": datastore.list_documents()}),
+        )
+
+    @app.post("/admin/documents/delete")
+    def delete_document(
+        request: Request,
+        doc_id: str = Form(...),
+        csrf_token_value: str | None = Form(None, alias="csrf_token"),
+    ):
+        admin = require_admin(request)
+        if not admin:
+            return HTMLResponse("Forbidden", status_code=403)
+        if not valid_csrf(request, csrf_token_value):
+            return csrf_forbidden()
+        doc = datastore.get_document(doc_id)
+        if not doc or doc["uploaded_by"] is None:
+            return HTMLResponse("Forbidden", status_code=403)
+        if serving_store is not None:
+            def mutation():
+                serving_store.delete_doc(doc_id)
+                return serving_store.get_all_chunks()
+
+            retriever.mutate_corpus(mutation)
+        if doc.get("stored_path"):
+            Path(doc["stored_path"]).unlink(missing_ok=True)
+        datastore.delete_document(doc_id, deleted_by=admin["email"])
+        return RedirectResponse("/admin/documents", status_code=303)
+
+    @app.post("/admin/documents/reindex")
+    def reindex_documents(
+        request: Request,
+        csrf_token_value: str | None = Form(None, alias="csrf_token"),
+    ):
+        if not require_admin(request):
+            return HTMLResponse("Forbidden", status_code=403)
+        if not valid_csrf(request, csrf_token_value):
+            return csrf_forbidden()
+        if serving_store is not None:
+            retriever.mutate_corpus(lambda: serving_store.get_all_chunks())
+        return RedirectResponse("/admin/documents", status_code=303)
 
     return app
 
@@ -246,8 +320,11 @@ def build_default_app() -> FastAPI:
     uploads_dir.mkdir(parents=True, exist_ok=True)
 
     def ingest_upload(doc):
-        pipe.ingest([doc])
-        retriever.reindex(serving.get_all_chunks())
+        def mutation():
+            pipe.ingest([doc])
+            return serving.get_all_chunks()
+
+        retriever.mutate_corpus(mutation)
 
     return create_app(retriever=retriever, provider=provider, datastore=datastore,
-                      ingest_upload=ingest_upload, uploads_dir=uploads_dir)
+                      ingest_upload=ingest_upload, serving_store=serving, uploads_dir=uploads_dir)

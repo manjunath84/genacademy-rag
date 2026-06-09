@@ -1,0 +1,49 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Admin documents</title>
+<script src="https://cdn.tailwindcss.com"></script></head>
+<body class="bg-slate-50 min-h-screen">
+<main class="max-w-5xl mx-auto p-6 space-y-6">
+  <h1 class="text-2xl font-semibold">Documents</h1>
+  <form method="post" action="/upload" enctype="multipart/form-data" class="bg-white rounded shadow p-4 flex gap-3 items-end">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label class="text-sm flex-1">PDF
+      <input name="file" type="file" class="block w-full border rounded px-3 py-2">
+    </label>
+    <button class="bg-slate-900 text-white rounded px-4 py-2">Upload</button>
+  </form>
+  <form method="post" action="/admin/documents/reindex">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <button class="border rounded px-4 py-2 bg-white">Re-index serving corpus</button>
+  </form>
+  <table class="w-full bg-white rounded shadow text-sm">
+    <thead>
+      <tr>
+        <th class="text-left p-2">Title</th>
+        <th class="text-left p-2">Type</th>
+        <th class="text-left p-2">Status</th>
+        <th class="text-left p-2">Chunks</th>
+        <th class="text-left p-2">Uploaded by</th>
+        <th class="p-2"></th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for doc in documents %}
+      <tr class="border-t">
+        <td class="p-2">{{ doc.title }}</td>
+        <td class="p-2">{{ doc.source_type }}</td>
+        <td class="p-2">{{ doc.status }}</td>
+        <td class="p-2">{{ doc.n_chunks }}</td>
+        <td class="p-2">{{ doc.uploaded_by or "" }}</td>
+        <td class="p-2 text-right">
+          {% if doc.uploaded_by and doc.status != "deleted" %}
+          <form method="post" action="/admin/documents/delete">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <input type="hidden" name="doc_id" value="{{ doc.id }}">
+            <button class="border rounded px-3 py-1">Delete</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</main></body></html>
