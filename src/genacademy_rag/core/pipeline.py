@@ -22,7 +22,6 @@ class IngestPipeline:
             if not chunks:
                 continue
             embeddings = self._provider.embed([c.text for c in chunks])
-            self._store.upsert(chunks, embeddings)
             self._datastore.add_document(
                 doc_id=doc.doc_id,
                 title=doc.title,
@@ -31,9 +30,12 @@ class IngestPipeline:
                 file_path=doc.file_path,
                 commit_hash=doc.commit_hash,
                 filename=doc.filename,
+                uploaded_by=doc.uploaded_by,
+                stored_path=doc.stored_path,
                 n_chunks=len(chunks),
             )
             self._datastore.add_chunks_meta(chunks)
+            self._store.upsert(chunks, embeddings)
             total += len(chunks)
         return total
 
