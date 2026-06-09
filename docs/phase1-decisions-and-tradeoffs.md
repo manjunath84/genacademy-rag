@@ -225,27 +225,46 @@ runs sync routes in a **threadpool**, so this is real parallelism even on one wo
 mid-rebuild sees a **torn index** (new BM25, old id list), and a delete that removes vectors *then*
 rebuilds BM25 leaves a window where a query still returns the deleted chunk.
 
-**Options.** (a) a global read/write lock around every retrieve and every mutation · (b) an immutable
-snapshot object swapped by one atomic reference assignment · (c) leave it (single-user demo).
+**Options.** (a) a lock-free immutable snapshot swapped by one atomic reference assignment · (b) a lock
+around both reads and mutations · (c) leave it (single-user demo).
 
-**Tradeoffs.** A read/write lock serializes *reads* too — every `/ask` contends on the lock, hurting
-throughput for a rare write. (c) is how the bug ships. The **snapshot** gives lock-free reads:
-`retrieve()` binds the current snapshot once and reads only from it (per-query snapshot isolation);
-writers build a *new* snapshot and swap the reference (atomic under the GIL). Only writers take a
-lock, and only against each other.
+**The two-pass story (worth telling as-is in an interview).** My first instinct was (a): the snapshot
+gives lock-free reads — `retrieve()` binds the current snapshot, writers build a new one and swap the
+reference (atomic under the GIL), so only writers contend. A second-model review **disproved that it's
+sufficient**: `retrieve()` reads dense hits from *live Chroma* but sparse hits from the *in-memory*
+snapshot — **two consistency domains**. A query holding the pre-delete snapshot can still rank a
+just-deleted chunk via its old BM25 and return it; the GIL only protects the reference swap, not the
+coherence of Chroma-plus-snapshot. So lock-free reads can't be made correct here without unifying the
+two stores.
 
-**Decision: immutable snapshot + atomic swap; a mutation lock only across writers.** Plus a subtle
-correctness rule — `retrieve()` materializes only ids present in its bound snapshot, so a vector
-deleted from Chroma under an in-flight query can't resurface as an orphan. This was a **Blocking**
-finding from the design review; my first draft claimed "atomic swap" but the code didn't do it.
+**Tradeoffs.** Unifying the stores (snapshot the dense vectors too) duplicates Chroma's job. Leaving it
+ships the orphan bug. A lock around reads *and* writes makes a query and a mutation never interleave —
+the simple correct answer — at the cost of serializing reads. But that cost is **negligible here**:
+the lock only covers the ~12 ms of index access (embed + Chroma query + BM25); the seconds-long
+grade/answer **LLM calls happen in later graph nodes, outside the lock**. Retrieval is not the
+latency bottleneck, so serializing it costs ~nothing.
+
+**Decision: immutable snapshot (clean atomic rebuild) + a single `threading.Lock` (the corpus lock)
+held around `retrieve()` itself and every mutation.** The lock — not the snapshot — is the correctness
+mechanism that keeps dense + sparse coherent per query. A read/write lock is the optimization if query
+concurrency ever matters; a plain mutex is the tight Phase-1 choice. Multi-worker → external/shared
+lock (Phase-2). **Plus a datastore `threading.RLock`** around the shared SQLite connection (Phase-0
+opened it `check_same_thread=False`, and Phase 1 adds concurrent threadpool writes), with documented
+**corpus-lock-before-DB-lock** ordering so the two locks can't deadlock.
 
 **How an interviewer probes it.**
 - *"Single worker — is there even concurrency?"* → yes: sync routes run in a threadpool; async routes
   interleave at await points. "One process" ≠ "one thing at a time."
-- *"Why not just lock?"* → a lock on reads makes the common path (queries) contend for a rare event
-  (a write). Copy-on-write/snapshot swap keeps reads lock-free; you only pay on writes.
-- *"Why is the reference swap safe without a lock?"* → attribute assignment is atomic under the GIL;
-  a reader sees either the whole old snapshot or the whole new one, never a mix.
+- *"A lock-free snapshot sounds elegant — why didn't it work?"* → because retrieval spans two stores
+  (live Chroma + in-memory BM25); a snapshot makes the in-memory side coherent but not the pair. This
+  is the trap: a snapshot gives you isolation *within one store*, not *across* stores.
+- *"Doesn't locking reads kill throughput?"* → not when the locked section (~12 ms retrieval) is dwarfed
+  by the unlocked LLM calls (seconds). Lock granularity matters more than lock/no-lock: hold it for the
+  index access, never around the model call.
+- *"Two locks — deadlock?"* → fixed acquisition order (corpus before DB), and no path takes them in the
+  other order. Stating the ordering rule is the answer.
+- *"Why is the reference swap atomic?"* → attribute assignment is atomic under the GIL; a reader sees
+  the whole old or whole new snapshot — but (per above) that alone wasn't enough, which is the lesson.
 
 ---
 
@@ -308,11 +327,15 @@ ignored column migration entirely.
 ## A note on process (a behavioral talking point in itself)
 
 This design was reviewed by a **different model (Codex)** before any code — the project's "builder ≠
-reviewer" rule. It returned **NEEDS-REWORK** with two Blocking findings (the salted-hash lookup and the
-torn-index concurrency race) that the author had missed. All eight findings were verified against the
-actual Phase-0 code and accepted. The lesson worth repeating in an interview: *a second reviewer on the
-design catches the expensive class of bug — wrong data model, wrong concurrency model — while it's still
-a paragraph to change, not a refactor.*
+reviewer" rule — and it took **two passes**. Pass 1 returned **NEEDS-REWORK** with two Blocking
+findings (the salted-hash lookup and the torn-index race) plus six more; all eight were verified
+against the actual Phase-0 code and accepted. Pass 2 confirmed 7/8 fixed but caught that my
+concurrency fix was *incomplete* — the snapshot didn't unify the live-Chroma + in-memory-BM25 stores,
+leaving an orphan window — and flagged the shared SQLite connection. Both folded in (lock around
+`retrieve()`; datastore `RLock`). The lesson worth repeating in an interview: *a second reviewer
+catches the expensive class of bug — wrong data model, wrong concurrency model — while it's still a
+paragraph to change; and the **re-review** matters, because the first fix to a concurrency bug is often
+itself subtly incomplete.*
 
 ---
 

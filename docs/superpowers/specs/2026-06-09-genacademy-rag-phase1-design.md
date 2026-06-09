@@ -157,14 +157,26 @@ CREATE TABLE usage_log (
 4. `INSERT INTO users(...)` with the code's role in the **same** transaction; commit.
 Two concurrent redemptions of the same code → exactly one wins (the conditional `UPDATE` rowcount), the other rolls back. A test asserts this.
 
-### 6.5 Concurrency model *(review fix #2)*
-`HybridRetriever` is refactored so its three index fields become **one immutable snapshot object** `_Index(ids, chunks_by_id, bm25)`:
-- `retrieve()` binds `snap = self._index` **once** at the top and reads only from `snap` for the whole call, and **materializes only ids present in `snap.chunks_by_id`** (so a vector deleted from Chroma under an in-flight query can't surface as an orphan).
-- `reindex()` builds a brand-new `_Index` and does a single atomic assignment `self._index = new` (atomic under the GIL) — no torn intermediate state.
-- A `threading.Lock` (the corpus mutation lock) serializes upload/delete/reindex so the Chroma delete and the snapshot swap happen together. `/ask` takes no write lock; it reads the current snapshot reference (atomic) → consistent snapshot isolation per query.
+### 6.5 Concurrency model *(review fix #2; revised after the 2nd review pass)*
+`/ask` reads the retriever's index while `upload`/`delete`/`reindex` rewrites it, and FastAPI runs sync routes in a **threadpool** — real parallelism even on one worker. Two distinct hazards:
+1. **Torn reads** inside the in-memory index — Phase-0 `reindex()` mutates three fields in sequence.
+2. **Cross-store coherence** — `retrieve()` takes dense hits from *live Chroma* (`store.query`) and sparse hits from the *in-memory* index. These are **two consistency domains**; a lock-free snapshot alone can't unify them. A query holding the pre-delete snapshot can still rank a just-deleted chunk via its old BM25 and materialize it from its old `chunks_by_id` — the orphan window the 2nd review flagged. (So "materialize only ids in the bound snapshot" is *not* sufficient and is dropped as the mechanism.)
+
+**Design:**
+- `HybridRetriever`'s three fields become one immutable `_Index(ids, chunks_by_id, bm25)`; `reindex()` builds a new `_Index` and swaps the reference in a single assignment (no torn in-memory state).
+- **A single `threading.Lock` (the corpus lock) guards both `retrieve()`'s index access AND every mutation** (Chroma `delete_doc`/`upsert` + snapshot swap). This is the correctness mechanism: a query runs entirely before or entirely after a mutation, so dense (Chroma) and sparse (snapshot) are always the same corpus version — the orphan window is closed.
+- The lock is held only for the ~12 ms of index access (query embed + Chroma query + BM25 scoring); the seconds-long grade/answer **LLM calls run in later graph nodes, outside the lock**, so readers serializing with each other is negligible against LLM-dominated latency.
+- *Escalation:* under multiple workers an in-process lock no longer suffices → external/shared index or a distributed lock (Phase-2 deploy). A read/write lock is the optimization if query concurrency matters before then; a plain mutex is the tight, correct Phase-1 choice.
 
 ### 6.6 CSRF *(review fix #7)*
 A view-layer CSRF helper: a per-session token stored in the session, emitted as a hidden field in every state-changing form, validated on each POST (signup, invite generate/revoke, doc delete/reindex, upload). Pure-core boundary untouched (the helper lives in `web/`). Session cookie set `same_site='lax'`; `secure=True` under HTTPS at deploy.
+
+### 6.7 Datastore concurrency *(2nd review pass)*
+The Phase-0 `SQLiteDatastore` holds **one** connection opened with `check_same_thread=False`. Phase 1 adds concurrent route writes (`redeem_invite`, `log_query`, invite revoke, delete tombstone, chunks cleanup) issued from threadpool threads sharing that single connection — unsafe (interleaved statements, and `BEGIN IMMEDIATE` on a shared connection is fragile).
+
+**Design:** a datastore-level `threading.RLock` (the **DB lock**) wraps every connection use — all reads, writes, and transactions, including the `BEGIN IMMEDIATE` redemption transaction (§6.4).
+
+**Lock ordering (deadlock avoidance):** the **corpus lock is always acquired before the DB lock**; no path holds the DB lock and then waits for the corpus lock. Concretely: `delete` takes the corpus lock (index removal + snapshot swap), then the DB lock (tombstone); `redeem_invite` / `log_query` / `revoke` take only the DB lock. (Alternative considered: short-lived per-operation connections + `busy_timeout` — more "real" for multi-process, more churn; the single-connection + RLock is the tight single-worker choice, with connection pooling as the Postgres-era path.)
 
 ---
 
@@ -172,7 +184,8 @@ A view-layer CSRF helper: a per-session token stored in the session, emitted as 
 
 - **Pure modules offline:** `security` (hash≠plaintext, verify round-trip, wrong secret fails, code id/secret split, expiry/used/revoked logic); `usage_summary` (p50/p95, top-N, rates on canned rows, empty input).
 - **Datastore (sqlite tmpfile):** `_migrate` adds columns to a Phase-0-shaped DB and rehashes plaintext; create_user; generate→redeem→used; redeem of expired/used/revoked/bad-secret rejected; **concurrent redeem → exactly one success**; delete_document tombstones (+deleted_by) and removes chunks; log_query/recent_usage round-trip.
-- **Retriever:** snapshot swap leaves no torn read; a chunk deleted from the store is not returned even by an in-flight query holding the old snapshot (orphan-window closed); reindex rebuilds BM25.
+- **Retriever:** snapshot swap leaves no torn read; with the corpus lock held around `retrieve()`, a delete cannot interleave a query, so a deleted chunk is never returned (orphan-window closed across the Chroma+BM25 boundary); reindex rebuilds BM25. A test exercises a delete concurrent with retrievals and asserts no deleted chunk surfaces.
+- **Datastore concurrency:** concurrent `log_query` / `redeem_invite` from multiple threads don't corrupt the shared connection (DB-lock serialization); the redeem transaction stays atomic under contention.
 - **Routes (TestClient, offline):** signup happy + each sad path; `require_admin` blocks members from every `/admin/*`; **CSRF token required** on each state-changing POST (missing/wrong token → rejected); delete removes from `serving` but **`eval` stays pristine** (extends the Phase-0 two-collection assertion); upload stores under a doc-id path (no filename collision); `/ask` writes exactly one usage row; dashboard renders from seeded usage.
 - All offline-deterministic via the existing `FakeModelProvider`; the single live `@pytest.mark.integration` test is unchanged.
 
@@ -184,7 +197,8 @@ A view-layer CSRF helper: a per-session token stored in the session, emitted as 
 |---|---|
 | TOCTOU double-redeem of an invite | Single transaction + conditional `UPDATE … WHERE used_at IS NULL`, assert rowcount==1 (§6.4) |
 | Salted hash isn't lookupable | Structured `id.secret` token: clear `id` for lookup, bcrypt(secret) at rest (§4.2) |
-| Torn read / queryable orphan during delete/reindex | Immutable snapshot + atomic swap + per-call binding + materialize-only-visible-ids + mutation lock (§6.5) |
+| Torn read / queryable orphan during delete/reindex | Immutable snapshot + atomic swap, and the **corpus lock around `retrieve()` itself** so dense (Chroma) + sparse (snapshot) stay one coherent version (§6.5) |
+| Shared SQLite connection corrupted by concurrent threadpool writes | Datastore `threading.RLock` around all connection use; documented corpus→DB lock ordering (§6.7) |
 | Stores desync on partial delete | Fail-safe order (index first), idempotent re-runnable delete, `unlink(missing_ok=True)` (§6.2) |
 | CSRF on authenticated destructive POSTs | Per-session CSRF token on every state-changing form (§6.6) |
 | Existing dev DB lacks new columns / has plaintext seeds | Idempotent `_migrate()` (PRAGMA + ALTER) + password rehash (§5) |
@@ -208,8 +222,13 @@ Verdict was **NEEDS-REWORK**; all 8 findings verified against the actual Phase-0
 8. **Upload collision (Important):** content-hash-derived on-disk path + `stored_path` (§6.2).
 9. **Cookie hardening (Suggestion):** SameSite=lax now, Secure at deploy, optional DB role re-check in `require_admin` (§6.1).
 
+### Second review pass (Codex, 2026-06-09) — 7/8 confirmed resolved; 2 new items, both folded in:
+- **Blocking — cross-store orphan window:** the snapshot + "materialize-only-visible-ids" rule did *not* unify live-Chroma dense + in-memory sparse. Fixed by holding the **corpus lock around `retrieve()`** (not just mutations), so a query and a mutation never interleave (§6.5). The "materialize-only" rule is dropped as the mechanism.
+- **Important — shared SQLite connection:** one `check_same_thread=False` connection under concurrent threadpool writes. Fixed with a datastore `threading.RLock` + documented corpus→DB lock ordering (§6.7).
+- Regression checks passed: eval path stays read-only/reproducible (snapshot built from `eval_store.get_all_chunks()`); no new core/data boundary violation from CSRF or logging.
+
 ---
 
 ## 10. Net scope
 
-2 new pure `core/` modules (`security`, `analytics`) · `HybridRetriever` snapshot refactor · `VectorStore.delete_doc` · 2 new tables + 3 `documents` columns + idempotent migration · ~6 routes + `require_admin` + CSRF helper · `uploaded_by` threaded through the ingest path · 1 new pinned dep (`bcrypt`). Larger than the first draft, but every addition closes a verified prod-grade gap.
+2 new pure `core/` modules (`security`, `analytics`) · `HybridRetriever` snapshot refactor + **corpus lock around `retrieve()`** · `VectorStore.delete_doc` · datastore **`RLock`** (corpus→DB lock ordering) · 2 new tables + 3 `documents` columns + idempotent migration · ~6 routes + `require_admin` + CSRF helper · `uploaded_by` threaded through the ingest path · 1 new pinned dep (`bcrypt`). Larger than the first draft, but every addition closes a verified prod-grade gap.
