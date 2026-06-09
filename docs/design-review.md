@@ -256,4 +256,144 @@ If the builder follows the cut order in §2.4, guards against the "impressive de
 
 ---
 
-*Review completed: 2026-06-07*
+## Part 6: Scope-Change Assessment (GitHub Corpus — June 7)
+
+**Triggered by:** User revealed corpus is not `../CuratedRAGMaterials/` PDFs/DOCXs, but live GitHub repos under `The-Gen-Academy` org.
+
+### 6.1 What I inspected
+
+| Repo | Files | Content |
+|---|---|---|
+| `awesome-agentic-ai-resources` | `README.md` (~28K chars) | 6-week curriculum catalog with 60+ resources in markdown tables |
+| `Mastering-Agentic-AI-Week1` | Jupyter notebooks, Python | Session hands-on exercises (LangChain Basics) |
+| `Mastering-Agentic-AI-Week2` | `1_rag_pipeline.ipynb` (240KB), `2_metadata_filtering.ipynb`, `3_hybrid_rag.ipynb`, `company_kb_viewer.py` (Streamlit), `shopeasy_knowledge_base.json` | **This is the reference solution for Week 2** |
+| Future repos | Unknown | From `The-Gen-Academy` org, unspecified |
+
+### 6.2 Critical finding: Reference solution collision
+
+The `Week2` repo **is the sample solution** the handout warns against replicating.
+
+- `1_rag_pipeline.ipynb` builds: Pinecone + OpenAI `text-embedding-3-small` + GPT-4.1-mini + `RecursiveCharacterTextSplitter`
+- `2_metadata_filtering.ipynb` adds: Pinecone metadata filters + LLM-classified structured output
+- `3_hybrid_rag.ipynb` adds: LangChain `EnsembleRetriever` with RRF fusion
+- `company_kb_viewer.py` is a Streamlit app with KB browser + chat agent
+
+**Verdict:** Our divergence (HTMX/Tailwind, local `sentence-transformers`, Nebius host, LangGraph refusal graph, own RRF fusion, eval-first graveyard) is our only protection against scoring zero. **This must be explicitly documented in the README and demo video.**
+
+### 6.3 Architecture deltas vs. the existing design
+
+| Design doc assumption | Reality | Required change |
+|---|---|---|
+| `FileLoaderRegistry` (PDF, DOCX) | GitHub repos (Markdown, Jupyter, Python, JSON) | `GitHubLoaderRegistry` with `MarkdownLoader`, `JupyterLoader`, `PythonLoader`, `JSONLoader` |
+| Citation = `(doc_id, page, section)` | Line-based + commit hash | Add `repo`, `file_path`, `line_start/end`, `commit_hash` |
+| Static file system | Live repos with new commits | Pin eval to commit hash; production fetches HEAD; stale indicator |
+| `CharacterTextSplitter` on clean text | Markdown tables split across rows | Table-aware chunking OR accept split-table chunks (they make great eval stress tests) |
+
+### 6.4 Ingestion requirements for Phase 0
+
+To load the actual corpus, the system needs:
+
+1. **MarkdownLoader** — parse `README.md`, preserve heading hierarchy, handle tables
+2. **JupyterLoader** — convert `.ipynb` to markdown via `nbformat`, extract code cells as metadata
+3. **JSONLoader** — parse `shopeasy_knowledge_base.json`, one `Document` per entry with metadata
+4. **GitHub fetcher** — list repo contents (single dir or full tree), fetch raw files, track commit SHA
+
+**Out of scope for MVP:** Incremental/delta updates. Use snapshot-at-sync. Rebuild index on admin trigger.
+
+### 6.5 Eval consequences: corpus mutability
+
+The eval 15-question set is gold-annotated to specific lines/sections. GitHub commits change line numbers and wording.
+
+**Fix:**
+- Lock the eval corpus to a specific commit hash per repo
+- Record `commit_hash` in each chunk's metadata
+- The retrieval scorer checks `chunk.meta.commit_hash == EXPECTED_COMMIT`
+
+**Production vs. eval split:**
+| Mode | Commit | Behavior |
+|---|---|---|
+| `eval` | Pinned | Always loads same snapshot; eval reproducible forever |
+| `production` | `HEAD` | Always latest; stale indicator in UI |
+
+### 6.6 Recommendation on which repos to ingest
+
+| Repo | Include? | Rationale |
+|---|---|---|
+| `awesome-agentic-ai-resources` | **Yes** | Primary content — curriculum catalog. Safe. |
+| `Mastering-Agentic-AI-Week1` | **Yes** | Hands-on exercises. Safe. |
+| `Mastering-Agentic-AI-Week2` | **Risky** | Is the reference solution. Ingesting it into your RAG (which answers user questions about course materials) is fine *functionally*. **Reading its code to inform your own implementation is not.** If you must include it, treat it as opaque data (do not open the notebooks while designing Phase 0). |
+| Future repos | Admin-add | Admin pastes a URL; system fetches and appends. No auto-discovery of org repos at build time. |
+
+---
+
+## Part 7: Eval Question Draft (15 questions, grounded in inspected content)
+
+All answers anchored to `awesome-agentic-ai-resources/README.md` unless noted.
+
+### Straightforward (6)
+
+| # | Question | Expected Answer Anchor | What it tests |
+|---|---|---|---|
+| 1 | "What is the learning objective for Week 2?" | "...context injection, chunking, and smart routing" | Heading→paragraph retrieval |
+| 2 | "How long does the DeepLearning.AI and Weaviate RAG Short Course take?" | "4 hours" | Table cell, exact value |
+| 3 | "What topics does 'Attention Is All You Need' cover?" | "Self-attention... Transformer architecture... multi-head attention" | Dense retrieval on paper title |
+| 4 | "Which Week 5 optional dive covers building neural nets from scratch?" | "Neural Networks: Zero to Hero — Andrej Karpathy" | Optional section retrieval |
+| 5 | "What benchmark compares embedding models?" | "MTEB Leaderboard" | Acronym/proper noun |
+| 6 | "What does QLoRA stand for, and what does it do?" | "Quantized Low-Rank Adaptation... reduces memory usage during fine-tuning" | Acronym + definition |
+
+### Chunking-stress (2)
+
+| # | Question | Expected Answer Anchor | What it tests |
+|---|---|---|---|
+| 7 | "The RAG short course is recommended for week 2. What optional deeper dives also cover RAG?" | "How I Got Better at Evaluating LLMs", "AI Engineering — Chip Huyen", "LLM Powered Autonomous Agents" | Multi-row collection across optional section; answer spans three table rows |
+| 8 | "What are the five document types in the ShopEasy knowledge base, and how many of each exist?" | `past_ticket` (18), `runbook` (10), `product_doc` (10), `faq` (7), `bug_report` (6) | From `Week2-Session1/readme.md`; table parsing + exact counts |
+
+### Multi-document (2)
+
+| # | Question | Expected Answer Anchor | What it tests |
+|---|---|---|---|
+| 9 | "Compare the learning objectives of Week 1 and Week 2. What changes?" | W1: "Foundational concepts... prompting strategies"; W2: "Build systems with context-awareness... context injection, chunking" | Cross-section synthesis |
+| 10 | "Which resources mention embeddings across multiple weeks?" | W1: "Embeddings: What they are..."; W2: "RAG Short Course", "The Embedding Archives"; W5: "MTEB Leaderboard" | Broad retrieval, deduplication, week-level grouping |
+
+### Ambiguous (2)
+
+| # | Question | Valid Answers | Scoring rubric |
+|---|---|---|---|
+| 11 | "What should I read about chunking?" | Primary: "Chunking Strategies for RAG" (Weaviate); Secondary: RAG Short Course, Embedding Archives, LlamaIndex docs | Accept if primary is named; bonus if secondary mentioned. Penalty if it fabricates a resource not in the catalog. |
+| 12 | "What tools are recommended for running local LLMs?" | llama.cpp, Ollama, vLLM (Week 5) | Accept 2+ tools. QLoRA is fine-tuning, not running — acceptably adjacent but not perfect. |
+
+### Unanswerable (3)
+
+| # | Question | Expected Behavior | What it tests |
+|---|---|---|---|
+| 13 | "What is the learning objective for Week 8?" | Refusal: "The knowledge base only covers Weeks 1–7" or similar | Out-of-bounds hallucination resistance |
+| 14 | "What are the due dates for each week's assignments?" | Refusal | Boundary between curriculum resources and assignment schedules |
+| 15 | "Who is the specific instructor for Week 4?" | Refusal: "Instructors are not named in this knowledge base" | Prevents hallucination of a name |
+
+---
+
+## Part 8: Document-Change Handling Strategy
+
+1. **Eval stability:** Pin to a `COMMIT_HASH`. Eval only loads `git show <hash>:README.md`, never `HEAD`. This guarantees the 15 questions never drift.
+
+2. **Production freshness:** Admin-triggered sync. After sync, `last_synced` timestamp shown in UI. If `HEAD` commit ≠ `last_synced_commit`, show: "New content available — click to re-index."
+
+3. **New repos:** Admin pastes a URL in a simple form. No auto-discovery of the entire org (scope creep for a 4-day build).
+
+4. **JSON eval schema:** Each eval entry should include:
+   ```json
+   {
+     "question": "...",
+     "gold_doc_ids": ["awesome-agentic-ai-resources/README.md"],
+     "gold_commit": "abc1234...",
+     "gold_answer": "...",
+     "category": "straightforward|chunking_stress|multi_doc|ambiguous|unanswerable",
+     "failure_mode_if_wrong": "retrieval_miss|hallucination|refusal_failure|fragmentation"
+   }
+   ```
+
+---
+
+**Signed review, completed:** Second-pass assessment of design changes + independent review of GitHub corpus scope change.
+
+*Review updated: 2026-06-07*

@@ -1,0 +1,67 @@
+"""Pipelines. IngestPipeline (offline): Document → chunk → embed → store + record metadata.
+QueryPipeline (online): question → graph → {answer, citations}. Both pure."""
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+from genacademy_rag.core.graph import build_graph
+from genacademy_rag.core.types import Chunk, Citation, Document
+
+
+class IngestPipeline:
+    def __init__(self, *, chunker, provider, store, datastore):
+        self._chunker = chunker
+        self._provider = provider
+        self._store = store
+        self._datastore = datastore
+
+    def ingest(self, docs: list[Document]) -> int:
+        total = 0
+        for doc in docs:
+            chunks: list[Chunk] = self._chunker.chunk(doc)
+            if not chunks:
+                continue
+            embeddings = self._provider.embed([c.text for c in chunks])
+            self._store.upsert(chunks, embeddings)
+            self._datastore.add_document(
+                doc_id=doc.doc_id,
+                title=doc.title,
+                source_type=doc.source_type,
+                repo=doc.repo,
+                file_path=doc.file_path,
+                commit_hash=doc.commit_hash,
+                filename=doc.filename,
+                n_chunks=len(chunks),
+            )
+            self._datastore.add_chunks_meta(chunks)
+            total += len(chunks)
+        return total
+
+
+@dataclass(frozen=True)
+class QueryResult:
+    answer: str
+    citations: list[Citation]
+    refused: bool
+    confidence: int
+    used_fallback: bool = False
+
+
+class QueryPipeline:
+    def __init__(self, *, retriever, provider, cosine_threshold: float = 0.2):
+        self._graph = build_graph(
+            retriever=retriever, provider=provider, cosine_threshold=cosine_threshold
+        )
+
+    def answer(self, question: str) -> QueryResult:
+        out = self._graph.invoke({"question": question})
+        # Index required keys directly (never `.get(default)`): the graph always sets answer,
+        # citations, refused, confidence, used_fallback, so a missing key is a wiring bug we want
+        # to surface as a KeyError — not paper over with an uncited / zero-confidence answer.
+        return QueryResult(
+            answer=out["answer"],
+            citations=out["citations"],
+            refused=out["refused"],
+            confidence=out["confidence"],
+            used_fallback=out["used_fallback"],
+        )

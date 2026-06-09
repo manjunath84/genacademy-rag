@@ -11,19 +11,35 @@ Independent review folded in: [`design-review.md`](design-review.md) (Kimchi, 20
 ## 1. One-liner (the handout's required primer)
 
 > *My RAG app helps **Gen Academy cohort members** answer **"what did the course say about X"
-> questions** from **the cohort's curated materials (14 files — PDF + DOCX + one PPTX, owned by the Gen
-> Academy team)** in a **web chat UI** with **≥90% faithfulness** and a **hard refusal path** when the
-> answer isn't in the corpus.*
+> questions** from **the cohort's curated materials — a *growing*, admin-owned corpus (Gen Academy
+> GitHub repos + uploaded PDF/DOCX/PPTX files), not a fixed file set** — in a **web chat UI** with
+> **≥90% faithfulness** and a **hard refusal path** when the answer isn't in the corpus.*
 
-- **Corpus (verified 2026-06-07 against `../CuratedRAGMaterials/`):** **14 files = 7 PDF + 6 DOCX + 1
-  PPTX**, ~73 MB total. Week-1/2 session decks (PDF), project handouts (DOCX), the Week-1 glossary (PDF,
-  1.6 MB), the *Mastering Agentic AI* guidebook (PDF, **19.3 MB** — the parse-quality risk in §9/§10),
-  token-usage best-practices (DOCX), session chat-question docs (DOCX), and one "Read Later" deck
-  (`Week 1 — Read Later (Deck 3).pptx`, 3.7 MB). Admin-owned; refreshes per cohort week.
-- **PPTX handling (Phase 0 decision):** the single PPTX is **excluded from the Phase-0 corpus and logged
-  as a known exclusion** in the eval report; a `PptxLoader` (`python-pptx`) is a Phase-1 loader-registry
-  add, not P0 scope. Rationale: one "Read Later" deck doesn't justify a third loader on the graded spine;
-  excluding-and-logging is itself the handout's "document where it fails / what's out of scope" discipline.
+**Two-tier corpus (the organizing principle).** The curated material keeps changing, so the corpus splits:
+
+| | **Eval corpus** (graded) | **Production corpus** (serves users) |
+|---|---|---|
+| Contents | Frozen, **commit-pinned** snapshot of the cohort's GitHub repos | The repos at HEAD **+** admin-uploaded files **+** future sources |
+| Gold set | **ONE** 15-question gold set anchors here (§7) | none — never expands the gold set |
+| Drift | Pinned → eval reproducible forever | Tracks HEAD; "re-index" on admin trigger |
+
+This honors "the curated material keeps growing" without letting new content destabilize the graded
+15-question spine (the #1 risk is under-budgeted gold annotation — one frozen gold set protects it).
+
+- **Phase-0 eval corpus (commit-pinned):** the **`awesome-agentic-ai-resources`** repo (a curriculum
+  catalog of 60+ resources in Markdown tables) **+** the **`Mastering-Agentic-AI-Week1`** hands-on repo.
+  Loaded via `MarkdownLoader` + `JupyterLoader` over a **GitHub fetcher** pinned to a fixed commit SHA.
+- **`Mastering-Agentic-AI-Week2` is EXCLUDED** — it **is** the handout's sample solution; ingesting or
+  reading its notebooks/code is disqualifying (§2). An admin-uploaded Week-2 **PPT** may join the
+  *production* corpus later; the repo's notebooks/code never do.
+- **NotebookLM is not a source.** The shared notebook is a *sink* the user filled — no consumer API to
+  pull from it. Its curated-resource *list* is exactly the `awesome-agentic-ai-resources` catalog we
+  already ingest, so nothing extra is needed.
+- **Production files (`../CuratedRAGMaterials/` + uploads):** the PDF/DOCX/PPTX exports (Week-1/2 decks,
+  handouts, glossary, the *Mastering Agentic AI* guidebook PDF, **19.3 MB**) feed the **production**
+  corpus via the file loaders + admin upload — additional retrievable content, **not** part of the graded
+  gold set. The 19.3 MB guidebook is therefore a *production* parse-quality concern (§9/§10), **no longer
+  a single point of failure for the graded eval** (which is clean GitHub-Markdown).
 - **Faithfulness, not just relevance:** answer must be grounded in retrieved chunks; measured in §7.
 - **Latency ceiling:** < 8 s end-to-end. The grader mechanism (§7) is chosen partly to protect this.
 
@@ -40,6 +56,12 @@ the corpus + monitor usage; members chat with cited answers.
 privacy/on-prem/regulated-docs thesis (local Gemma). This is a **fresh standalone build (Branch B)**,
 own repo, cloud generation (Nebius), cloud-deployable. The privacy thesis **does not apply here and
 must not be claimed.** The only carry-over is a *transferable eval lesson* (§7), not code.
+
+**Sample-solution firewall:** the `Mastering-Agentic-AI-Week2` repo **is** the handout's reference
+solution (`1_rag_pipeline.ipynb`, `3_hybrid_rag.ipynb`, `company_kb_viewer.py`). Its notebooks/code are
+**never** read or ingested — reading them to inform the build is disqualifying. Only opaque, non-code
+admin uploads (e.g. a Week-2 PPT) may enter the *production* corpus later. The deliberate divergences are
+documented in the write-up (§11) so a reviewer can't mistake this for a replicated starter.
 
 ## 3. What is actually graded (the anchor for all phasing)
 
@@ -69,12 +91,14 @@ retrieval quality, or evaluation."* → **eval is a first-class deliverable.**
 
 ### Phase 0 — gradeable spine (build *and finish* before anything else)
 ```
-ingest PDF+DOCX → chunk (fixed-size +citation metadata) → embed (local ST) → Chroma + BM25
-  → hybrid retrieve (RRF, k=5) → LangGraph[grade → answer+citations | refuse]
+ingest pinned GitHub repos (Markdown+Jupyter) → chunk (fixed-size +citation metadata) → embed (local ST)
+  → Chroma + BM25 → hybrid retrieve (RRF, k=5) → LangGraph[grade → answer+citations | refuse]
   → non-streaming chat UI (form-post) → EVAL REPORT
+       (production corpus adds PDF/DOCX files + admin uploads on top — same pipeline, ungraded)
 ```
-- **Roles, minimal:** one seeded **admin** + one seeded **member**, session login. (Corpus seeded by a
-  script; admin upload UI is a cut-candidate, not required here.)
+- **Roles, minimal:** one seeded **admin** + one seeded **member**, session login. (Eval corpus loaded by
+  a commit-pinned script; a **minimal admin upload endpoint** is a Phase-0/1-boundary SHOULD — the user
+  will add production docs via UI — while a polished upload UI is Phase 1.)
 - **Citations:** every chunk stamped at ingest `{doc_id, title, page/section, char_span}`; carried to
   the answer; rendered as `<details>` source cards.
 - **Refusal path (graded):** LangGraph `retrieve → grade → {answer | "I could not find this in the
@@ -90,7 +114,8 @@ exists with a **scores table** (recall@k, precision@k, MRR, faithfulness, refusa
 **Cut order if the schedule slips (never cut eval or refusal):**
 1. SSE streaming → plain form-post (already the baseline).
 2. Expandable source cards → footnote links.
-3. Admin upload UI → seed corpus via script.
+3. Admin upload **UI polish** → keep only a minimal upload endpoint (eval corpus is the commit-pinned
+   script, so the graded spine never needs upload).
 4. LLM-judge faithfulness (falling back to citation-grounding check).
 5. **Never:** the 15-question eval report or the refusal path.
 
@@ -113,9 +138,12 @@ exists with a **scores table** (recall@k, precision@k, MRR, faithfulness, refusa
 the only HTTP/template layer.
 
 ### Interfaces (the pluggable seams)
-- `Loader` registry — `PdfLoader`, `DocxLoader` (Phase 0) → `PptxLoader`, `WebLoader` (Phase 1). *(The
-  corpus's 1 PPTX is excluded-and-logged in P0 per §1; the registry shape means adding it later is a new
-  class + config entry, not a refactor.)*
+- `Loader` registry — **`GitHubFetcher` + `MarkdownLoader` + `JupyterLoader` (Phase 0 — the
+  commit-pinned eval corpus)**; `PdfLoader`, `DocxLoader` (production files, Phase 0 if cheap → Phase 1);
+  `PptxLoader`, `PythonLoader`, `JSONLoader`, `WebLoader` (later, as the production corpus grows). *(One
+  registry — eval vs production is which loaders run, plus a commit-pin on the eval set. `JSONLoader` was
+  deferred because its only Phase-0 candidate, the ShopEasy KB, lives in the excluded Week-2 repo (§7).
+  Adding a loader = a new class + config entry, never a refactor.)*
 - `Chunker` — `FixedSizeChunker` (Phase 0) → `SectionAwareChunker` (Phase 2). *(Added per review: if
   chunking is an eval variable, it lives behind an interface.)*
 - `ModelProvider` — `embed()` (local ST, Phase 0) + `generate()` (Nebius, mandatory).
@@ -126,14 +154,18 @@ the only HTTP/template layer.
 
 ### Two pipelines
 - **Ingestion (admin/script, offline):** `Loader → clean → Chunker(+metadata) → embed →
-  VectorStore.upsert + BM25 index` + write `documents` / `chunks_meta` rows.
+  VectorStore.upsert + BM25 index` + write `documents` / `chunks_meta` rows. *(Eval corpus pinned to a
+  commit SHA per repo; production tracks HEAD and re-indexes on admin trigger.)*
 - **Query (member, online):** `embed(query) → HybridRetriever.retrieve(k=5) → LangGraph[grade →
   answer | refuse] → {answer, citations}`. (Usage logging added in Phase 1.)
 
 ### Data model
 - `users(id, email, role['admin'|'member'], created_at)`
-- `documents(id, title, filename, source_type, uploaded_by, status, n_chunks, created_at)`
-- `chunks_meta(id, doc_id, ordinal, page_or_section, char_start, char_end, text_preview)`
+- `documents(id, title, source_type['github'|'pdf'|'docx'|'pptx'|...], repo, file_path, commit_hash,
+  filename, uploaded_by, status, n_chunks, created_at)` — `repo`/`commit_hash` set for GitHub sources;
+  `filename` for uploads.
+- `chunks_meta(id, doc_id, ordinal, page_or_section, line_start, line_end, char_start, char_end,
+  text_preview)` — GitHub chunks carry line spans; file chunks carry page/char spans.
 - `usage_log(...)` — **Phase 1.**
 
 ## 7. Eval plan (first-class deliverable)
@@ -161,6 +193,15 @@ under rate-limit pressure where the retrieval eval is not.
      fabricated citations, not paraphrase drift), but keeps a faithfulness column in the report with no
      Nebius cost. This is what runs if the LLM-judge is cut.
 
+**The gold set is anchored to the commit-pinned eval corpus, and the eval runs only over it.** Kimchi
+drafted 15 grounded questions (`design-review.md` Part 7) against `awesome-agentic-ai-resources/README.md`
++ Week-1 content; we adopt them with two reconciliations: **(a)** re-tag the three exact-value/acronym
+items (Kimchi Q2/Q5/Q6) as our **exact-match** category below; **(b) Q8 (the ShopEasy KB) is
+re-anchored** — its `shopeasy_knowledge_base.json` lives in the **excluded** Week-2 repo, so that
+chunking-stress slot is re-filled by a split-table question over the `awesome-agentic-ai-resources`
+Markdown tables (final wording locks during annotation). Each chunk records `commit_hash`; the retrieval
+scorer checks it, so production content never leaks into the gold set.
+
 **The 15-question set** (≥6 edge cases; covers the handout's required hard cases):
 - 4 **answerable straightforward** · 2 **exact-match / keyword** (a rare proper noun or exact phrase —
   e.g. a specific tool or term that appears verbatim in one doc; **BM25 should win where dense misses**) ·
@@ -179,20 +220,34 @@ from the LLM-judge **or** the citation-grounding fallback) + a **failure-analysi
 (Symptom → Cause[taxonomy] → Fix). The retrieval columns + failure table *are* the handout's required
 deliverable; faithfulness % is the depth add-on.
 
-**Schedule note:** gold-standard annotation for 15 questions over ~20 files is **~6 h of careful
-reading, not coding** — start Day 1, in parallel with scaffolding.
+**Schedule note:** gold-standard annotation for 15 questions over the **pinned eval repos** is **~6 h of
+careful reading, not coding** — start Day 1, in parallel with scaffolding. (Markdown parses cleanly, so
+annotation is lighter than over the 19.3 MB production PDF would have been.)
+
+**Annotation gate — answer substance must be *in* the corpus, not just *catalogued*.** The
+`awesome-agentic-ai-resources` repo is a **curriculum catalog** (links + short blurbs), so some of
+Kimchi's "answerable" drafts may have no in-corpus substance — e.g. Q3 ("what does *Attention Is All You
+Need* cover?") and Q6 ("what does QLoRA *do*?") are answerable only if the README **describes** them, not
+merely **links** them. Before annotating, confirm each gold answer exists in the pinned corpus *text*; any
+that don't either **move to the unanswerable bucket** (a correct refusal) or get **re-worded to what the
+catalog actually states** ("which resource covers *Attention Is All You Need*?"). Likewise check Q9/Q10
+are genuinely **multi-document** (e.g. README + a Week-1 notebook), not multi-*section* of the one README,
+or the multi-doc retrieval claim is hollow. Re-balance to 4+2+2+2+2+3 after this pass.
 
 ## 8. Resolved decisions (were §8 open; closed via review)
 
 | Decision | Resolution |
 |---|---|
+| **Corpus model** | **Two-tier:** eval = commit-pinned GitHub repos (one gold set); production = repos@HEAD + uploaded files + future sources. Honors a *growing* corpus without destabilizing the graded eval. |
+| **Week-2 repo** | **Excluded** — it's the sample solution; notebooks/code never read or ingested. An admin-uploaded Week-2 PPT may join *production* later. |
+| **NotebookLM** | **Not integrated** — a sink, no consumer API. Its resource list = the `awesome-agentic-ai-resources` catalog we already ingest. |
 | **Auth model** | Seeded admin+member (Phase 0); **invite-code** signup (Phase 1). OAuth deferred — external dep not worth it in 4 days. |
 | **Embeddings** | **Local `all-MiniLM-L6-v2` (384-dim)** Phase 0; Nebius = **generation** (the mandatory call); Nebius embeddings = Phase 2 swap demo. |
 | **Chunking** | **Fixed-size + overlap (~512/64)** Phase 0 behind `Chunker`; section-aware = Phase 2 comparison. |
 | **Retrieval depth** | **Hybrid dense+BM25+RRF** in Phase 0 (matches Use Case #1's pattern, ~30-min add); rerank Phase 2. |
 | **top-k** | **k=5** Phase 0 (eval sensitivity-tests it). |
-| **Ingestion** | **Synchronous with progress** (HTMX); no background worker for ~20–25 files. |
-| **20 MB guidebook** | **Parse-quality gate + per-doc chunk cap** (see §9); OCR fallback; exclude-if-bad and note in eval. |
+| **Ingestion** | **Synchronous with progress** (HTMX); no background worker at this corpus size. |
+| **19.3 MB guidebook** | **Production** file (not eval-gating). **Parse-quality gate + per-doc chunk cap** (see §9); OCR fallback; exclude-if-bad and note it. |
 
 ## 9. Pre-build spike (do first; ~45 min — now gates more)
 
@@ -202,16 +257,19 @@ Against the **live Nebius/Pinecone endpoints and the real corpus**:
 - **Throughput / rate limits:** fire ~10 sequential requests; check for free-tier throttling (the eval
   runs 15 Q × generate + 15 judge calls in a loop).
 - Per-call **latency** (embed-local + generate) → confirm the < 8 s ceiling holds with the chosen grader.
-- **Parse-quality gate on the 20 MB guidebook:** char density not mostly whitespace/garbled, expected
-  headings present, mean chunk length above a floor; if it fails → OCR (`pdf2image`+`pytesseract` /
-  `marker`); if still bad → exclude and log.
+- **GitHub fetch + commit-pin (eval corpus):** list/fetch raw files at a fixed SHA; Markdown + Jupyter
+  parse cleanly; record the SHA the gold set anchors to.
+- **Parse-quality gate on the 19.3 MB guidebook (production, not eval-blocking):** char density not mostly
+  whitespace/garbled, expected headings present, mean chunk length above a floor; if it fails → OCR
+  (`pdf2image`+`pytesseract` / `marker`); if still bad → exclude and log.
 - Pinecone free-tier credits + index config (dimension must match 384).
 
 ## 10. Risks & mitigations
 
 | Risk | Mitigation |
 |---|---|
-| **Corpus parse quality** (slide decks extract badly; 20 MB PDF may be image-heavy) — #1 schedule risk | Parse-quality gate + OCR fallback + exclude-if-bad (§9). |
+| **Production parse quality** (slide decks extract badly; 19.3 MB PDF may be image-heavy). **No longer the #1 *eval* risk** — the graded eval is clean GitHub-Markdown — but still gates production retrieval. | Parse-quality gate + OCR fallback + exclude-if-bad (§9); guidebook is production, not eval-blocking. |
+| **Corpus mutability** (GitHub repos change; line numbers/wording drift) | Eval pinned to a commit SHA; `commit_hash` in chunk metadata; scorer checks it. Production tracks HEAD with a re-index trigger. |
 | **Gold-standard annotation underestimated** (~6 h, manual) | Scheduled explicitly, started Day 1 in parallel. |
 | **"Impressive demo, weak eval"** — days spent on UI/streaming, eval thrown together Day 4 | **Hard rule:** eval runnable + scores table **by end of Day 2**; UI polish only if eval green. Cut order (§5). |
 | **Nebius free-tier rate limits** | Throughput check in the spike; batch/sleep in the eval loop if throttled. |
@@ -226,8 +284,9 @@ Against the **live Nebius/Pinecone endpoints and the real corpus**:
 - [ ] Demo video ≤5 min (walkthrough + how AI tools were used + live result).
 - [ ] GitHub repo (own repo, separate from legal-rag).
 - [ ] Project write-up (Google Doc) — incl. a **"Design divergences from the sample solution"** section
-      (eval-first split, pluggable interfaces, LangGraph refusal graph, hybrid retrieval) so a reviewer
-      can't mistake it for a replicated starter.
+      (eval-first split, pluggable interfaces, LangGraph refusal graph, hybrid retrieval, the two-tier
+      eval/production corpus, NotebookLM-independent ingestion) so a reviewer can't mistake it for a
+      replicated starter.
 
 ---
 

@@ -29,9 +29,23 @@ regulated-docs piece.
 - The architecture visibly supports **swapping** data sources, model providers, and retrieval
   strategies (interface + config, demonstrated by a second implementation).
 
+## Corpus model (the curated material *grows* — it is not a fixed file set)
+
+The cohort's materials keep changing (new repos, admin uploads, future sources), so the corpus is **two-tier**:
+
+- **Eval corpus (graded):** a frozen, **commit-pinned** snapshot of the cohort's GitHub repos. The one
+  15-question gold set anchors here, so the graded eval is reproducible forever.
+- **Production corpus (serves users):** the repos at HEAD **+** admin-uploaded files (PDF/DOCX/PPTX) **+**
+  future sources. Grows freely; **never** expands the gold set.
+
+This lets the material keep growing without destabilizing the graded spine (under-budgeted gold
+annotation is the #1 risk — one frozen gold set protects it).
+
 ## In scope
 
-- Multi-format ingestion (Phase 0: PDF, DOCX; Phase 1: web pages), chunking with citation metadata.
+- **Two-tier ingestion.** Phase 0 eval corpus = commit-pinned GitHub repos via Markdown/Jupyter loaders +
+  a GitHub fetcher. Production = + admin-uploaded PDF/DOCX/PPTX files (and later web pages). Chunking with
+  citation metadata throughout.
 - Hybrid retrieval (dense + BM25, Phase 0) → cited generation → refusal path. Cross-encoder rerank = Phase 2.
 - Two roles (Phase 0: seeded admin + member; Phase 1: real RBAC + signup).
 - Admin content management + usage dashboard (Phase 1).
@@ -43,11 +57,16 @@ regulated-docs piece.
 - The `legal-rag-private` **privacy / on-prem thesis** — false here (cloud API, non-sensitive docs).
 - Real-time collaboration, multi-tenant orgs, billing.
 - Replicating the handout's sample solutions or the `Knowledge-Intelligence-System` reference repo.
+- **Ingesting or reading the `Mastering-Agentic-AI-Week2` repo's notebooks/code** — it *is* the sample
+  solution; reading it to inform the build is disqualifying. (Week-2 contributes nothing for now; an
+  admin-uploaded Week-2 **PPT** may join the *production* corpus later — never the repo's code.)
+- **Integrating with NotebookLM** — it's a *sink*, not a source (no consumer API). Its curated-resource
+  *list* is already the `awesome-agentic-ai-resources` catalog we ingest directly.
 - Anything that delays a **finished Phase 0** (the graded spine + eval).
 
 ## The one-liner (handout primer)
 
 > My RAG app helps **Gen Academy cohort members** answer **"what did the course say about X" questions**
-> from **the cohort's curated materials (~15–25 PDF/DOCX files, owned by the Gen Academy team)** in a
-> **web chat UI** with **≥90% faithfulness** and a **hard refusal path** when the answer isn't in the
-> corpus.
+> from **the cohort's curated materials (a *growing*, admin-owned corpus — Gen Academy GitHub repos plus
+> uploaded PDF/DOCX/PPTX files; not a fixed file set)** in a **web chat UI** with **≥90% faithfulness**
+> and a **hard refusal path** when the answer isn't in the corpus.

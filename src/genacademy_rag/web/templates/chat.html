@@ -1,0 +1,30 @@
+<!doctype html><html><head><meta charset="utf-8"><title>GenAcademy RAG</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/htmx.org@1.9.12"></script></head>
+<body class="bg-slate-50 min-h-screen">
+<div class="max-w-2xl mx-auto p-6 space-y-4">
+  <h1 class="text-2xl font-semibold">Ask the cohort materials</h1>
+  <form method="post" action="/ask" class="flex gap-2">
+    <input name="question" value="{{ question or '' }}" placeholder="What did the course say about…?"
+           class="flex-1 border rounded px-3 py-2">
+    <button class="bg-slate-900 text-white rounded px-4">Ask</button>
+  </form>
+  {% if result %}
+  <div class="bg-white rounded-xl shadow p-5 space-y-3">
+    {% if result.refused %}
+      <p class="text-amber-700 font-medium">{{ result.answer }}</p>
+    {% else %}
+      <p class="whitespace-pre-wrap">{{ result.answer }}</p>
+      <div class="pt-2 border-t">
+        <p class="text-xs uppercase tracking-wide text-slate-500 mb-1">Sources</p>
+        {% for c in result.citations %}
+        <details class="text-sm mb-1">
+          <summary class="cursor-pointer">{{ c.title }}{% if c.line_start %} (lines {{ c.line_start }}–{{ c.line_end }}){% endif %}</summary>
+          <div class="text-slate-600 pl-4">{{ c.repo }}/{{ c.file_path }} @ {{ c.commit_hash[:7] if c.commit_hash }}</div>
+        </details>
+        {% endfor %}
+      </div>
+    {% endif %}
+  </div>
+  {% endif %}
+</div></body></html>

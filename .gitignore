@@ -12,7 +12,8 @@ venv/
 !.env.example
 
 # Data / vector stores / models (corpus stays out of git)
-data/
+/data/
+spike/_fetched/
 *.sqlite
 *.db
 chroma/
