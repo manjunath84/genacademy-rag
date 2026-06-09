@@ -1,3 +1,5 @@
+import logging
+
 from genacademy_rag.core.grader import cosine_fallback_grade, grade_answerability
 from genacademy_rag.core.types import Chunk, Citation, RetrievedChunk
 from tests.conftest import FakeModelProvider
@@ -50,6 +52,24 @@ def test_grader_falls_back_when_answerable_is_not_a_real_boolean():
     p = FakeModelProvider(canned_json='{"answerable": "maybe", "confidence": 3}')
     g = grade_answerability("q", [_rc("x", score=0.05)], p, cosine_threshold=0.2)
     assert g.answerable is False and g.used_fallback is True
+
+
+def test_grader_falls_back_to_cosine_on_provider_exception(caplog):
+    class BrokenProvider:
+        def generate(self, *args, **kwargs):
+            raise TimeoutError("provider timed out")
+
+    with caplog.at_level(logging.WARNING, logger="genacademy_rag.core.grader"):
+        g = grade_answerability(
+            "q",
+            [_rc("x", score=0.05)],
+            BrokenProvider(),
+            cosine_threshold=0.2,
+        )
+
+    assert g.answerable is False
+    assert g.used_fallback is True
+    assert "grader provider call failed; using cosine fallback" in caplog.text
 
 
 def test_cosine_fallback_refuses_when_below_threshold():
