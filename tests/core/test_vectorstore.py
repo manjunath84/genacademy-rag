@@ -41,3 +41,22 @@ def test_get_all_chunks_returns_every_upserted_chunk(tmp_path, fake_provider):
     store.upsert(chunks, fake_provider.embed([c.text for c in chunks]))
     got = {c.chunk_id for c in store.get_all_chunks()}
     assert got == {"d1::0", "d1::1"}
+
+
+def test_chroma_delete_doc_removes_only_matching_doc(tmp_path, fake_provider):
+    def chunk(doc_id: str, ordinal: int) -> Chunk:
+        cit = Citation(doc_id=doc_id, title=doc_id, source_type="pdf")
+        return Chunk(
+            chunk_id=f"{doc_id}::{ordinal}",
+            doc_id=doc_id,
+            ordinal=ordinal,
+            text=f"{doc_id} text {ordinal}",
+            citation=cit,
+        )
+
+    store = ChromaStore(persist_dir=tmp_path / "chroma", collection="serving")
+    chunks = [chunk("a", 0), chunk("a", 1), chunk("b", 0)]
+    store.upsert(chunks, fake_provider.embed([c.text for c in chunks]))
+    store.delete_doc("a")
+    remaining = store.get_all_chunks()
+    assert [c.chunk_id for c in remaining] == ["b::0"]

@@ -13,6 +13,7 @@ class VectorStore(Protocol):
     def query(self, query_embedding: list[float], top_k: int) -> list[tuple[str, float]]: ...
     def get_chunk(self, chunk_id: str) -> Chunk: ...
     def get_all_chunks(self) -> list[Chunk]: ...
+    def delete_doc(self, doc_id: str) -> None: ...
 
 
 class ChromaStore:
@@ -33,6 +34,9 @@ class ChromaStore:
             documents=[c.text for c in chunks],
             metadatas=[{**c.citation.to_metadata(), "ordinal": c.ordinal} for c in chunks],
         )
+
+    def delete_doc(self, doc_id: str) -> None:
+        self._col.delete(where={"doc_id": doc_id})
 
     def query(self, query_embedding: list[float], top_k: int) -> list[tuple[str, float]]:
         # Return (chunk_id, cosine_similarity). Chroma cosine space gives DISTANCE; sim = 1 - dist.
