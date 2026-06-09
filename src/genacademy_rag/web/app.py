@@ -67,11 +67,14 @@ def create_app(*, retriever, provider, datastore, ingest_upload=None, uploads_di
         if request.session.get("role") != "admin" or ingest_upload is None:
             return RedirectResponse("/login", status_code=303)
         raw = await file.read()
+        # file.filename is attacker-controlled: strip to a basename so "../../etc/x" can't escape
+        # uploads_dir, and supply a fallback since Starlette permits a None filename.
+        safe_name = Path(file.filename or "upload.pdf").name
         if uploads_dir is not None:
             uploads_dir.mkdir(parents=True, exist_ok=True)
-            (uploads_dir / file.filename).write_bytes(raw)
+            (uploads_dir / safe_name).write_bytes(raw)
         from genacademy_rag.core.loaders.pdf_loader import load_pdf_bytes
-        doc = load_pdf_bytes(filename=file.filename, raw_bytes=raw,
+        doc = load_pdf_bytes(filename=safe_name, raw_bytes=raw,
                              uploaded_by=request.session.get("email"))
         ingest_upload(doc)
         return RedirectResponse("/", status_code=303)

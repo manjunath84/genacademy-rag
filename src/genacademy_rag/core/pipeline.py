@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from genacademy_rag.core.graph import build_graph
-from genacademy_rag.core.types import Chunk, Document
+from genacademy_rag.core.types import Chunk, Citation, Document
 
 
 class IngestPipeline:
@@ -41,9 +41,10 @@ class IngestPipeline:
 @dataclass(frozen=True)
 class QueryResult:
     answer: str
-    citations: list  # list[Citation]
+    citations: list[Citation]
     refused: bool
     confidence: int
+    used_fallback: bool = False
 
 
 class QueryPipeline:
@@ -54,9 +55,13 @@ class QueryPipeline:
 
     def answer(self, question: str) -> QueryResult:
         out = self._graph.invoke({"question": question})
+        # Index required keys directly (never `.get(default)`): the graph always sets answer,
+        # citations, refused, confidence, used_fallback, so a missing key is a wiring bug we want
+        # to surface as a KeyError — not paper over with an uncited / zero-confidence answer.
         return QueryResult(
             answer=out["answer"],
-            citations=out.get("citations", []),
+            citations=out["citations"],
             refused=out["refused"],
-            confidence=out.get("confidence", 0),
+            confidence=out["confidence"],
+            used_fallback=out["used_fallback"],
         )

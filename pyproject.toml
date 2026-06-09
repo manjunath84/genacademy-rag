@@ -38,6 +38,8 @@ dev = [
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+# spike/ is frozen exploratory probe code (docs/spike-findings.md), not shipped — don't lint it.
+extend-exclude = ["spike"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]

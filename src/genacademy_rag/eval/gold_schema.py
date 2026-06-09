@@ -30,20 +30,24 @@ class GoldQuestion:
     answerable: bool
     gold: list[GoldSpan] = field(default_factory=list)
 
+    def __post_init__(self):
+        # Enforce the invariant at construction so no invalid GoldQuestion can exist in memory,
+        # regardless of how it's built (load_gold_set or a direct call).
+        if self.category not in CATEGORIES:
+            raise ValueError(f"{self.id}: unknown category {self.category!r}")
+        if self.answerable and not self.gold:
+            raise ValueError(f"{self.id}: answerable=true requires at least one gold span")
+        if not self.answerable and self.gold:
+            raise ValueError(f"{self.id}: unanswerable question must have empty gold")
+
 
 def load_gold_set(path) -> list[GoldQuestion]:
     raw = yaml.safe_load(Path(path).read_text())
-    out: list[GoldQuestion] = []
-    for item in raw:
-        if item["category"] not in CATEGORIES:
-            raise ValueError(f"q{item['id']}: unknown category {item['category']!r}")
-        spans = [GoldSpan(**s) for s in item.get("gold", [])]
-        if item["answerable"] and not spans:
-            raise ValueError(f"q{item['id']}: answerable=true requires at least one gold span")
-        if not item["answerable"] and spans:
-            raise ValueError(f"q{item['id']}: unanswerable question must have empty gold")
-        out.append(GoldQuestion(
-            id=item["id"], question=item["question"],
-            category=item["category"], answerable=item["answerable"], gold=spans,
-        ))
-    return out
+    return [
+        GoldQuestion(
+            id=item["id"], question=item["question"], category=item["category"],
+            answerable=item["answerable"],
+            gold=[GoldSpan(**s) for s in item.get("gold", [])],
+        )
+        for item in raw
+    ]

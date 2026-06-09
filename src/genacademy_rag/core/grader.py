@@ -1,11 +1,15 @@
-"""Refusal grader. Primary: JSON-mode LLM call (spike confirmed it works on the open model).
-Fallback: max cosine similarity of the retrieved set vs a calibrated threshold. Load-bearing:
-low confidence ⇒ refuse, never answer from priors (AGENTS.md §3)."""
+"""Refusal grader. Primary: JSON-mode LLM call (spike confirmed it works on the open model) whose
+`answerable` field IS the decision; `confidence` is only a 1-5 bucket reported downstream. Fallback
+(on any malformed/unparseable response): max cosine similarity of the retrieved set vs a calibrated
+threshold. Load-bearing: if the context doesn't support an answer we refuse, never answer from
+priors (AGENTS.md §3). `answerable` is parsed strictly so a stringified `"false"` cannot flip a
+refusal into an answer (see json_utils.strict_bool)."""
 from __future__ import annotations
 
 import json
 from dataclasses import dataclass
 
+from genacademy_rag.core.json_utils import strict_bool
 from genacademy_rag.core.types import RetrievedChunk
 
 GRADER_SYSTEM = "You are a strict grader. Reply ONLY with a JSON object."
@@ -47,7 +51,9 @@ def grade_answerability(question: str, retrieved: list[RetrievedChunk], provider
             json_mode=True, max_tokens=64,
         )
         parsed = json.loads(raw)
-        return Grade(answerable=bool(parsed["answerable"]),
+        return Grade(answerable=strict_bool(parsed["answerable"]),
                      confidence=int(parsed.get("confidence", 3)))
     except (json.JSONDecodeError, KeyError, TypeError, ValueError):
+        # Any malformed field — including a non-boolean `answerable` strict_bool rejects — routes
+        # to the cosine fallback, which fails toward refusal below threshold.
         return cosine_fallback_grade(retrieved, threshold=cosine_threshold)

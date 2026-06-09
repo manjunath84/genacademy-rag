@@ -53,8 +53,10 @@ class Document:
     filename: str | None = None
 
 
-@dataclass
+@dataclass(frozen=True)
 class RetrievedChunk:
+    # `score` is the COSINE similarity carried from VectorStore.query (NOT the RRF rank score) — the
+    # grader's cosine fallback depends on this. Frozen so it can't be mutated to the wrong signal.
     chunk: Chunk
     score: float
 
@@ -64,6 +66,7 @@ class GraphState(TypedDict, total=False):
     retrieved: list  # list[RetrievedChunk]
     answerable: bool
     confidence: int
+    used_fallback: bool  # True when the grader degraded to the cosine threshold (observability)
     answer: str
     citations: list  # list[Citation]
     refused: bool

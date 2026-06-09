@@ -2,10 +2,14 @@
 (retriever, provider) are injected so the graph is unit-tested against fakes."""
 from __future__ import annotations
 
+import logging
+
 from langgraph.graph import END, START, StateGraph
 
 from genacademy_rag.core.grader import grade_answerability
 from genacademy_rag.core.types import GraphState
+
+logger = logging.getLogger(__name__)
 
 REFUSAL_MESSAGE = "I could not find this in the course materials."
 ANSWER_SYSTEM = (
@@ -21,7 +25,12 @@ def build_graph(*, retriever, provider, cosine_threshold: float = 0.2):
     def grade_node(state: GraphState) -> dict:
         g = grade_answerability(state["question"], state["retrieved"], provider,
                                 cosine_threshold=cosine_threshold)
-        return {"answerable": g.answerable, "confidence": g.confidence}
+        if g.used_fallback:
+            # The LLM grader returned an unparseable response; the refuse/answer decision came from
+            # the raw cosine threshold. Surface it — a degraded grader must not look healthy.
+            logger.warning("grader fell back to cosine threshold (question=%r)", state["question"])
+        return {"answerable": g.answerable, "confidence": g.confidence,
+                "used_fallback": g.used_fallback}
 
     def answer_node(state: GraphState) -> dict:
         context = "\n---\n".join(r.chunk.text for r in state["retrieved"])

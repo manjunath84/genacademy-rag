@@ -43,3 +43,15 @@ def test_pdf_pages_become_page_citations():
     chunks = FixedSizeChunker(chunk_size=12, overlap=0).chunk(doc)
     pages = {c.citation.page_or_section for c in chunks}
     assert "page 1" in pages and "page 3" in pages
+
+
+def test_pdf_page_label_follows_chunk_start_across_a_boundary():
+    # "AAAA" = page 1, "\f", "BBBB" = page 2. With size=6 the first chunk ("AAAA\fB") straddles the
+    # form-feed; the rule is "cite the page where the chunk STARTS", so it must stay page 1, and the
+    # next chunk (starting after the \f) must be page 2. Pins the boundary rule against refactors.
+    doc = Document(doc_id="g", title="g.pdf", source_type="pdf",
+                   text="AAAA\fBBBB", filename="g.pdf")
+    chunks = FixedSizeChunker(chunk_size=6, overlap=0).chunk(doc)
+    assert chunks[0].text == "AAAA\fB"            # this chunk crosses the page boundary
+    assert chunks[0].citation.page_or_section == "page 1"
+    assert chunks[1].citation.page_or_section == "page 2"

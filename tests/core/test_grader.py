@@ -21,11 +21,35 @@ def test_json_grader_parses_refusal():
     assert g.answerable is False
 
 
+def test_json_grader_honors_stringified_false_as_refusal():
+    # JSON-mode LLMs emit booleans as strings; bool("false") is True in Python, which would flip a
+    # refusal into an answer (refusal bypass). strict_bool must read "false" as False — and because
+    # the JSON parsed fine, this is NOT the cosine fallback path.
+    p = FakeModelProvider(canned_json='{"answerable": "false", "confidence": 1}')
+    g = grade_answerability("who won the 2050 world cup?", [_rc("unrelated", score=0.9)], p)
+    assert g.answerable is False
+    assert g.used_fallback is False
+
+
+def test_json_grader_honors_stringified_true():
+    p = FakeModelProvider(canned_json='{"answerable": "true", "confidence": 4}')
+    g = grade_answerability("what is RAG?", [_rc("RAG retrieves then generates.")], p)
+    assert g.answerable is True and g.used_fallback is False
+
+
 def test_grader_falls_back_to_cosine_on_malformed_json():
     p = FakeModelProvider(canned_json="not json at all")
     g = grade_answerability("q", [_rc("x", score=0.9)], p, cosine_threshold=0.2)
     assert g.answerable is True            # fell back, top score 0.9 >= 0.2
     assert g.used_fallback is True
+
+
+def test_grader_falls_back_when_answerable_is_not_a_real_boolean():
+    # A non-boolean string (not "true"/"false") is unparseable → cosine fallback, which refuses
+    # below threshold. Fail toward refusal, never answer on a garbage grade.
+    p = FakeModelProvider(canned_json='{"answerable": "maybe", "confidence": 3}')
+    g = grade_answerability("q", [_rc("x", score=0.05)], p, cosine_threshold=0.2)
+    assert g.answerable is False and g.used_fallback is True
 
 
 def test_cosine_fallback_refuses_when_below_threshold():

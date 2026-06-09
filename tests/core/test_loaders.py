@@ -20,6 +20,30 @@ def test_week2_repo_is_firewalled_out():
         assert_allowed("Mastering-Agentic-AI-Week2")
 
 
+def test_fetch_raw_firewalls_before_any_network_call(monkeypatch):
+    # Lock the firewall at the call site, not just the helper: fetch_raw must raise BEFORE touching
+    # the network, so a refactor that drops the assert_allowed() guard fails this test.
+    import genacademy_rag.core.loaders.github_fetcher as gf
+
+    def _boom(*a, **k):
+        raise AssertionError("network call must not happen for a firewalled repo")
+
+    monkeypatch.setattr(gf.requests, "get", _boom)
+    with pytest.raises(ValueError, match="not in the eval allowlist"):
+        gf.fetch_raw(owner="The-Gen-Academy", repo="Mastering-Agentic-AI-Week2",
+                     sha="deadbeef", path="solution.ipynb")
+
+
+def test_allowed_repo_name_with_wrong_owner_or_sha_is_rejected():
+    # Defense-in-depth: a fork under a different owner, or an unpinned SHA, must be blocked even
+    # though the repo NAME is allowlisted.
+    with pytest.raises(ValueError, match="pinned eval-corpus entry"):
+        assert_allowed("awesome-agentic-ai-resources", owner="evil-fork",
+                       sha="5dfb8691180dc4956107e86839998ba3a2ebd94f")
+    with pytest.raises(ValueError, match="pinned eval-corpus entry"):
+        assert_allowed("awesome-agentic-ai-resources", owner="The-Gen-Academy", sha="0000000")
+
+
 def test_markdown_loader_builds_document_with_provenance():
     doc = load_markdown(
         repo="awesome-agentic-ai-resources", file_path="README.md",

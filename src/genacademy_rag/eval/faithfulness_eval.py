@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import re
 
+from genacademy_rag.core.json_utils import strict_bool
 from genacademy_rag.core.types import RetrievedChunk
 
 FAITHFULNESS_JUDGE_SYSTEM = "You are a strict faithfulness judge. Reply ONLY with a JSON object."
@@ -27,7 +28,9 @@ def citation_grounding_score(answer: str, retrieved: list[RetrievedChunk],
                               min_overlap: float = 0.6) -> bool:
     ans = _content_words(answer)
     if not ans:
-        return True
+        # An empty / all-stopword answer has nothing to ground. That's a generation failure, not a
+        # faithful answer — scoring it True would silently inflate the graded faithfulness %.
+        return False
     ctx: set[str] = set()
     for r in retrieved:
         ctx |= _content_words(r.chunk.text)
@@ -42,6 +45,6 @@ def llm_judge_score(question: str, answer: str, retrieved: list[RetrievedChunk],
              question=question, answer=answer, context=context)}],
         json_mode=True, max_tokens=256, temperature=0.0)
     parsed = json.loads(raw)
-    return {"faithful": bool(parsed["faithful"]),
+    return {"faithful": strict_bool(parsed["faithful"]),
             "hallucinated_claims": parsed.get("hallucinated_claims", []),
             "score": int(parsed.get("score", 0)), "raw": raw}

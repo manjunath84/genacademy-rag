@@ -24,9 +24,17 @@ EVAL_CORPUS: list[dict] = [
 ]
 
 _ALLOWED = {r["repo"] for r in EVAL_CORPUS}
+_ALLOWED_TRIPLES = {(r["owner"], r["repo"], r["sha"]) for r in EVAL_CORPUS}
 
 
-def assert_allowed(repo: str) -> None:
+def assert_allowed(repo: str, *, owner: str | None = None, sha: str | None = None) -> None:
+    """Firewall gate. Always rejects a repo name outside the allowlist. When owner+sha are supplied
+    (the real fetch path), additionally requires the exact pinned (owner, repo, sha) triple — so a
+    fork under a different owner that reuses an allowlisted repo name, or an unpinned SHA, is also
+    blocked, not just Mastering-Agentic-AI-Week2."""
     if repo not in _ALLOWED:
         raise ValueError(f"repo {repo!r} is not in the eval allowlist {_ALLOWED} "
                          f"(Mastering-Agentic-AI-Week2 is the sample solution and is firewalled)")
+    if owner is not None and sha is not None and (owner, repo, sha) not in _ALLOWED_TRIPLES:
+        raise ValueError(f"({owner}/{repo}@{sha}) is not a pinned eval-corpus entry — only the "
+                         f"exact commit-pinned triples in EVAL_CORPUS are fetchable")

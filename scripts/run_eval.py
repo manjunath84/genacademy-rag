@@ -3,6 +3,7 @@ Retrieval eval always runs (protected). LLM-judge runs unless --no-judge or thro
 the citation-grounding fallback. Saves raw judge outputs to eval/runs/ for auditability."""
 import argparse
 import json
+import sys
 from pathlib import Path
 
 from genacademy_rag.config import Settings
@@ -34,8 +35,9 @@ def main():
     runs_dir = Path("eval/runs")
     runs_dir.mkdir(parents=True, exist_ok=True)
     per_q: list[dict] = []
-    faith_flags: list[bool] = []
-    judge_used = not args.no_judge
+    # (row, question, answer, retrieved) for each answerable question — faithfulness is scored in a
+    # second pass so the report's scorer label always matches every row (no judge/grounding mix).
+    answerable_rows: list[tuple[dict, str, str, list]] = []
     for q in gold:
         retrieved = retriever.retrieve(q.question)
         row = score_question(q, retrieved, k=s.top_k)
@@ -43,24 +45,32 @@ def main():
         row["refused"] = result.refused
         row["refusal_correct"] = result.refused != q.answerable
         if q.answerable:
-            if judge_used:
-                try:
-                    j = llm_judge_score(q.question, result.answer, retrieved, provider)
-                    (runs_dir / f"judge_{q.id}.json").write_text(json.dumps(j, indent=2))
-                    row["faithful"] = j["faithful"]
-                except Exception:           # noqa: BLE001
-                    # Deliberate: disable the judge run-wide on first failure (throttling/parse)
-                    # and fall back to citation-grounding for ALL questions. A report mixing two
-                    # faithfulness scorers is incoherent; one labeled scorer is the honest output.
-                    judge_used = False
-            if not judge_used:
-                row["faithful"] = citation_grounding_score(result.answer, retrieved)
-            faith_flags.append(bool(row["faithful"]))
+            answerable_rows.append((row, q.question, result.answer, retrieved))
         else:
             row["faithful"] = None
         per_q.append(row)
 
+    # Pass 2: try the LLM judge; on the FIRST failure, log which question and why, then disable the
+    # judge run-wide and re-score EVERY answerable row with citation-grounding (label stays honest).
+    judge_used = not args.no_judge
+    if judge_used:
+        for row, question, answer, retrieved in answerable_rows:
+            try:
+                j = llm_judge_score(question, answer, retrieved, provider)
+                (runs_dir / f"judge_{row['id']}.json").write_text(json.dumps(j, indent=2))
+                row["faithful"] = j["faithful"]
+            except Exception as e:           # noqa: BLE001
+                print(f"[run_eval] judge failed on q={row['id']}: {type(e).__name__}: {e}; "
+                      "disabling judge run-wide, falling back to citation-grounding",
+                      file=sys.stderr)
+                judge_used = False
+                break
+    if not judge_used:
+        for row, _question, answer, retrieved in answerable_rows:
+            row["faithful"] = citation_grounding_score(answer, retrieved)
+
     agg = aggregate(per_q)
+    faith_flags = [bool(row["faithful"]) for row, *_ in answerable_rows]
     faith_pct = (sum(faith_flags) / len(faith_flags)) if faith_flags else None
     failures: list[dict] = []  # fill from per_q rows where recall<1 / refusal_correct is False
     md = render_report(agg, per_q, failures, faithfulness_pct=faith_pct, judge_used=judge_used)
