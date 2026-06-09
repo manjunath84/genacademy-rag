@@ -238,12 +238,14 @@ class SQLiteDatastore:
         commit_hash=None,
         filename=None,
         uploaded_by=None,
+        stored_path=None,
         n_chunks=0,
+        status="indexed",
     ) -> None:
         with self._lock:
             self._conn.execute(
                 "INSERT OR REPLACE INTO documents(id,title,source_type,repo,file_path,commit_hash,"
-                "filename,uploaded_by,n_chunks) VALUES (?,?,?,?,?,?,?,?,?)",
+                "filename,uploaded_by,stored_path,n_chunks,status) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
                 (
                     doc_id,
                     title,
@@ -253,15 +255,42 @@ class SQLiteDatastore:
                     commit_hash,
                     filename,
                     uploaded_by,
+                    stored_path,
                     n_chunks,
+                    status,
                 ),
             )
             self._conn.commit()
+
+    def list_documents(self, *, include_deleted: bool = True) -> list[dict]:
+        where = "" if include_deleted else "WHERE status != 'deleted'"
+        with self._lock:
+            rows = self._conn.execute(
+                f"SELECT * FROM documents {where} ORDER BY created_at DESC, id DESC"
+            ).fetchall()
+            return [dict(row) for row in rows]
 
     def get_document(self, doc_id: str) -> dict | None:
         with self._lock:
             row = self._conn.execute("SELECT * FROM documents WHERE id=?", (doc_id,)).fetchone()
             return dict(row) if row else None
+
+    def delete_document(self, doc_id: str, *, deleted_by: str) -> bool:
+        with self._lock:
+            row = self._conn.execute("SELECT * FROM documents WHERE id=?", (doc_id,)).fetchone()
+            if row is None:
+                return False
+            doc = dict(row)
+            if doc["uploaded_by"] is None:
+                return False
+            self._conn.execute("DELETE FROM chunks_meta WHERE doc_id=?", (doc_id,))
+            if doc["status"] != "deleted":
+                self._conn.execute(
+                    "UPDATE documents SET status='deleted', deleted_at=?, deleted_by=? WHERE id=?",
+                    (_utcnow_text(), deleted_by, doc_id),
+                )
+            self._conn.commit()
+            return True
 
     def add_chunks_meta(self, chunks: list[Chunk]) -> None:
         with self._lock:
@@ -291,3 +320,38 @@ class SQLiteDatastore:
                 "SELECT * FROM chunks_meta WHERE doc_id=? ORDER BY ordinal", (doc_id,)
             ).fetchall()
             return [dict(r) for r in rows]
+
+    def log_query(
+        self,
+        *,
+        user_email: str | None,
+        question: str,
+        refused: bool,
+        confidence: int,
+        used_fallback: bool,
+        n_citations: int,
+        latency_ms: int,
+    ) -> None:
+        with self._lock:
+            self._conn.execute(
+                "INSERT INTO usage_log(user_email, question, refused, confidence, used_fallback, "
+                "n_citations, latency_ms) VALUES (?,?,?,?,?,?,?)",
+                (
+                    user_email,
+                    question,
+                    int(refused),
+                    confidence,
+                    int(used_fallback),
+                    n_citations,
+                    latency_ms,
+                ),
+            )
+            self._conn.commit()
+
+    def recent_usage(self, *, limit: int = 500) -> list[dict]:
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT * FROM usage_log ORDER BY ts DESC, id DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+            return [dict(row) for row in rows]

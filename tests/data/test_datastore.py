@@ -6,9 +6,9 @@ from genacademy_rag.core.types import Chunk, Citation
 from genacademy_rag.data.datastore import SQLiteDatastore
 
 
-def _chunk(i):
+def _chunk(i, doc_id="d1"):
     cit = Citation(
-        doc_id="d1",
+        doc_id=doc_id,
         title="README.md",
         source_type="github",
         repo="r",
@@ -20,8 +20,8 @@ def _chunk(i):
         char_end=i + 5,
     )
     return Chunk(
-        chunk_id=f"d1::{i}",
-        doc_id="d1",
+        chunk_id=f"{doc_id}::{i}",
+        doc_id=doc_id,
         ordinal=i,
         text=f"chunk {i} preview",
         citation=cit,
@@ -181,3 +181,70 @@ def test_concurrent_redeem_allows_exactly_one_winner(tmp_path):
         results = list(pool.map(redeem, range(8)))
     assert results.count(True) == 1
     assert results.count(False) == 7
+
+
+def test_document_delete_is_uploaded_only_and_idempotent(tmp_path):
+    ds = SQLiteDatastore(tmp_path / "t.sqlite")
+    ds.add_document(
+        doc_id="course",
+        title="Course",
+        source_type="github",
+        uploaded_by=None,
+        n_chunks=1,
+    )
+    ds.add_document(
+        doc_id="upload",
+        title="Upload",
+        source_type="pdf",
+        filename="notes.pdf",
+        uploaded_by="admin@genacademy.local",
+        stored_path=str(tmp_path / "notes.pdf"),
+        n_chunks=2,
+    )
+    ds.add_chunks_meta([_chunk(0, "upload"), _chunk(1, "upload")])
+    assert not ds.delete_document("course", deleted_by="admin@genacademy.local")
+    assert ds.delete_document("upload", deleted_by="admin@genacademy.local")
+    assert ds.delete_document("upload", deleted_by="admin@genacademy.local")
+    deleted = ds.get_document("upload")
+    assert deleted is not None
+    assert deleted["status"] == "deleted"
+    assert deleted["deleted_by"] == "admin@genacademy.local"
+    assert ds.get_chunks_for_doc("upload") == []
+
+
+def test_usage_log_round_trip(tmp_path):
+    ds = SQLiteDatastore(tmp_path / "t.sqlite")
+    ds.log_query(
+        user_email="member@genacademy.local",
+        question="What is RAG?",
+        refused=False,
+        confidence=5,
+        used_fallback=False,
+        n_citations=2,
+        latency_ms=123,
+    )
+    rows = ds.recent_usage(limit=10)
+    assert len(rows) == 1
+    assert rows[0]["question"] == "What is RAG?"
+    assert rows[0]["refused"] == 0
+    assert rows[0]["used_fallback"] == 0
+    assert rows[0]["latency_ms"] == 123
+
+
+def test_concurrent_usage_writes_are_serialized(tmp_path):
+    ds = SQLiteDatastore(tmp_path / "t.sqlite")
+
+    def write(i: int) -> None:
+        ds.log_query(
+            user_email="member@genacademy.local",
+            question=f"q{i}",
+            refused=i % 2 == 0,
+            confidence=3,
+            used_fallback=False,
+            n_citations=1,
+            latency_ms=i,
+        )
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        list(pool.map(write, range(40)))
+    assert len(ds.recent_usage(limit=100)) == 40
