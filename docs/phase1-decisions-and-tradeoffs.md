@@ -69,9 +69,21 @@ two uses. `seed_users()` migrates the two P0 users to hashed. Cost is tiny becau
 once. "Invite codes are hashed like passwords because they're bearer credentials" is a deliberate
 principal-level signal.
 
+**The catch a reviewer caught (and the fix).** A salted bcrypt hash is **not lookupable** — every
+hash of the same input differs, so you can't `SELECT … WHERE code_hash = bcrypt(input)`. My first
+draft made `code_hash` the primary key, which is meaningless for redemption lookup. Fix: structure
+the code like a real API token — `code = "<id>.<secret>"` where `id` (8 url-safe bytes) is stored in
+the **clear** as the lookup handle and only `bcrypt(secret)` is stored. Redeem = split on `.`, look
+up by `id` (O(1)), then bcrypt-verify the secret. This is exactly how Stripe (`sk_live_…`) and GitHub
+PATs (`ghp_…`) are shaped: a non-secret locator + a secret verifier.
+
 **How an interviewer probes it.**
 - *"Why bcrypt over SHA-256?"* → SHA-256 is fast = brute-force friendly; bcrypt has a tunable work
   factor + per-hash salt, designed to be slow. Mention argon2id as the modern alternative.
+- *"How do you look up a credential you stored as a salted hash?"* → you can't hash-and-match; you
+  need a non-secret lookup handle (the `id` half / a key prefix) and then verify the secret half
+  against its hash. Naming *why* a salted hash defeats lookup is the signal. (Alternative at tiny
+  scale: scan all active codes and verify each — O(n) bcrypt, fine for a handful, wrong at scale.)
 - *"Why show the code only once?"* → if you can re-display it, you must store it recoverably
   (plaintext/encrypted) → defeats hashing. Show-once lets you store only the hash.
 - *"Salt — where does it come from?"* → bcrypt embeds a random salt in the hash string; you don't
@@ -101,11 +113,13 @@ coherent system. This is a small distributed-consistency problem.
 - *Hybrid* gives **index-reflects-reality immediately** (correctness) **and** keeps history. The
   relational tombstone is the system of record; the search index holds only live content.
 
-**Decision: hybrid.** Delete order = **index first** (vectors + BM25 → immediately un-queryable),
-**tombstone last**. Serialized behind a mutation lock; reindex is idempotent and re-runnable so a
-partial failure is recoverable by re-running. Guarded so only *uploaded* docs are deletable — the
-seeded curriculum can't be nuked — and **only the `serving` collection is ever mutated; `eval` is
-immutable** (the Phase-0 isolation invariant, carried forward).
+**Decision: hybrid.** Precise order: (1) remove vectors from `serving` + atomically swap the
+retrieval snapshot → un-queryable; (2) `unlink(missing_ok=True)` the file; (3) drop `chunks_meta`;
+(4) tombstone the `documents` row last (`status='deleted', deleted_at, deleted_by`). Serialized
+behind the corpus mutation lock; idempotent and re-runnable so a partial failure recovers by
+re-running. Guarded so only *uploaded* docs are deletable — the seeded curriculum can't be nuked —
+and **only `serving` is ever mutated; `eval` is immutable** (the Phase-0 isolation invariant). The
+tombstone records `deleted_by` so "deleted by X at T" is answerable without a separate audit table.
 
 **How an interviewer probes it.**
 - *"What if the process crashes mid-delete?"* → order matters: do the correctness-critical removal
@@ -200,6 +214,105 @@ extension* (when the Postgres preset lands).
   vs. speculative.
 - *"Isn't this a god object?"* → it's bounded and grouped; the Protocol seam already exists so the
   split is mechanical when triggered. The cost of waiting is low *because* the seam is there.
+
+---
+
+## Decision 7 — Concurrency: an immutable retrieval snapshot, not in-place mutation
+
+**Problem.** `/ask` reads the retriever's index while `upload`/`delete`/`reindex` rewrites it. FastAPI
+runs sync routes in a **threadpool**, so this is real parallelism even on one worker. The Phase-0
+`reindex()` mutates three fields (`_chunks_by_id`, `_ids`, `_bm25`) in sequence — a query interleaving
+mid-rebuild sees a **torn index** (new BM25, old id list), and a delete that removes vectors *then*
+rebuilds BM25 leaves a window where a query still returns the deleted chunk.
+
+**Options.** (a) a global read/write lock around every retrieve and every mutation · (b) an immutable
+snapshot object swapped by one atomic reference assignment · (c) leave it (single-user demo).
+
+**Tradeoffs.** A read/write lock serializes *reads* too — every `/ask` contends on the lock, hurting
+throughput for a rare write. (c) is how the bug ships. The **snapshot** gives lock-free reads:
+`retrieve()` binds the current snapshot once and reads only from it (per-query snapshot isolation);
+writers build a *new* snapshot and swap the reference (atomic under the GIL). Only writers take a
+lock, and only against each other.
+
+**Decision: immutable snapshot + atomic swap; a mutation lock only across writers.** Plus a subtle
+correctness rule — `retrieve()` materializes only ids present in its bound snapshot, so a vector
+deleted from Chroma under an in-flight query can't resurface as an orphan. This was a **Blocking**
+finding from the design review; my first draft claimed "atomic swap" but the code didn't do it.
+
+**How an interviewer probes it.**
+- *"Single worker — is there even concurrency?"* → yes: sync routes run in a threadpool; async routes
+  interleave at await points. "One process" ≠ "one thing at a time."
+- *"Why not just lock?"* → a lock on reads makes the common path (queries) contend for a rare event
+  (a write). Copy-on-write/snapshot swap keeps reads lock-free; you only pay on writes.
+- *"Why is the reference swap safe without a lock?"* → attribute assignment is atomic under the GIL;
+  a reader sees either the whole old snapshot or the whole new one, never a mix.
+
+---
+
+## Decision 8 — CSRF on state-changing routes (the thing that's easy to forget)
+
+**Problem.** Phase 1 adds authenticated destructive POSTs (delete doc, revoke invite, reindex, upload,
+generate invite). Auth is a **session cookie**, which the browser sends automatically — including on a
+request forged by another site. Role checks don't help: the victim *is* an admin.
+
+**Options.** (a) nothing (rely on the role check — vulnerable) · (b) per-session CSRF token in a
+hidden form field, validated on POST · (c) double-submit cookie · (d) SameSite cookie only.
+
+**Tradeoffs.** Role checks authorize *who*, not *intent* — they don't stop CSRF. `SameSite=lax`
+mitigates a lot but isn't a complete defense (and is a browser default, not a guarantee). The
+synchronizer-token pattern (b) is the textbook server-rendered-form defense and is small + lives
+entirely in the view, so it doesn't touch pure core.
+
+**Decision: per-session CSRF token on every state-changing form + `SameSite=lax`.** Defense in depth,
+view-layer only. Flagged as **Important** by the review; absent from the first draft.
+
+**How an interviewer probes it.**
+- *"Why doesn't the admin role check stop CSRF?"* → CSRF rides the victim's own authenticated
+  session; the forged request *is* authorized. You need to prove the request came from your own page.
+- *"SameSite=lax — done?"* → helps, not sufficient (top-level GET navigations, older browsers, edge
+  methods); keep the token as the real control.
+- *"Where does the token live in a layered app?"* → the view (it's an HTTP/transport concern), never
+  the domain core — same boundary discipline as usage logging.
+
+---
+
+## Decision 9 — Schema migration on an existing SQLite file (the unglamorous one)
+
+**Problem.** Phase 0 created tables with `CREATE TABLE IF NOT EXISTS`. Phase 1 adds columns
+(`documents.deleted_at/deleted_by/stored_path`) and must rehash plaintext seed passwords. On a fresh
+DB that's automatic; on the **existing** `data/genacademy.sqlite`, `IF NOT EXISTS` is a no-op and the
+new columns never appear — silent drift between code and schema.
+
+**Options.** (a) drop/recreate the DB (loses data) · (b) a migration tool (Alembic — heavy for SQLite
++ one dev DB) · (c) a tiny idempotent in-code migration.
+
+**Tradeoffs.** Drop-and-recreate is fine in dev but a habit that bites in prod. Alembic is the right
+answer at scale but overkill here and adds a dep + workflow. A hand-rolled idempotent `_migrate()`
+(`PRAGMA table_info` → `ALTER TABLE ADD COLUMN` for missing ones; rehash non-bcrypt passwords) is
+~15 lines, runs safely on every boot, and teaches the actual mechanic.
+
+**Decision: idempotent in-code `_migrate()` for Phase 1; note Alembic as the Postgres-era upgrade.**
+Important finding from the review — the first draft said "migrate passwords" but never said *how*, and
+ignored column migration entirely.
+
+**How an interviewer probes it.**
+- *"`CREATE TABLE IF NOT EXISTS` — what's the trap?"* → it never alters an existing table; new columns
+  silently don't get added; you discover it as a runtime "no such column."
+- *"How do you make a migration safe to run repeatedly?"* → check current state first (`PRAGMA
+  table_info`) and only apply the delta; rehash only passwords that aren't already bcrypt.
+- *"When do you reach for Alembic?"* → multiple environments, ordered/versioned migrations, rollbacks,
+  a team — i.e., when "run a delta on boot" stops being safe or auditable.
+
+---
+
+## A note on process (a behavioral talking point in itself)
+
+This design was reviewed by a **different model (Codex)** before any code — the project's "builder ≠
+reviewer" rule. It returned **NEEDS-REWORK** with two Blocking findings (the salted-hash lookup and the
+torn-index concurrency race) that the author had missed. All eight findings were verified against the
+actual Phase-0 code and accepted. The lesson worth repeating in an interview: *a second reviewer on the
+design catches the expensive class of bug — wrong data model, wrong concurrency model — while it's still
+a paragraph to change, not a refactor.*
 
 ---
 
