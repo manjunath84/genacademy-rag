@@ -1,3 +1,6 @@
+import sqlite3
+
+from genacademy_rag.core.security import hash_password, is_bcrypt_hash, verify_password
 from genacademy_rag.core.types import Chunk, Citation
 from genacademy_rag.data.datastore import SQLiteDatastore
 
@@ -49,3 +52,56 @@ def test_record_document_and_chunks(tmp_path):
     assert doc is not None and doc["commit_hash"] == "abc123" and doc["n_chunks"] == 2
     metas = ds.get_chunks_for_doc("d1")
     assert len(metas) == 2 and metas[0]["line_start"] == 0
+
+
+def test_migrate_adds_phase1_columns_and_hashes_plaintext_users(tmp_path):
+    db_path = tmp_path / "phase0.sqlite"
+    conn = sqlite3.connect(db_path)
+    conn.executescript(
+        """
+        CREATE TABLE users (
+            id INTEGER PRIMARY KEY, email TEXT UNIQUE NOT NULL,
+            role TEXT NOT NULL CHECK(role IN ('admin','member')),
+            password TEXT NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
+        CREATE TABLE documents (
+            id TEXT PRIMARY KEY, title TEXT, source_type TEXT, repo TEXT, file_path TEXT,
+            commit_hash TEXT, filename TEXT, uploaded_by TEXT, status TEXT DEFAULT 'indexed',
+            n_chunks INTEGER DEFAULT 0, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
+        CREATE TABLE chunks_meta (
+            id TEXT PRIMARY KEY, doc_id TEXT, ordinal INTEGER, page_or_section TEXT,
+            line_start INTEGER, line_end INTEGER, char_start INTEGER, char_end INTEGER,
+            text_preview TEXT);
+        INSERT INTO users(email, role, password) VALUES
+            ('admin@genacademy.local', 'admin', 'admin');
+        """
+    )
+    conn.commit()
+    conn.close()
+
+    ds = SQLiteDatastore(db_path)
+    columns = {row["name"] for row in ds.table_info("documents")}
+    assert {"deleted_at", "deleted_by", "stored_path"} <= columns
+    assert ds.table_exists("invite_codes")
+    assert ds.table_exists("usage_log")
+    admin = ds.get_user_by_email("admin@genacademy.local")
+    assert admin is not None
+    assert is_bcrypt_hash(admin["password"])
+    assert verify_password("admin", admin["password"])
+
+
+def test_seed_users_stores_bcrypt_hashes(tmp_path):
+    ds = SQLiteDatastore(tmp_path / "t.sqlite")
+    ds.seed_users()
+    admin = ds.get_user_by_email("admin@genacademy.local")
+    member = ds.get_user_by_email("member@genacademy.local")
+    assert admin is not None and verify_password("admin", admin["password"])
+    assert member is not None and verify_password("member", member["password"])
+
+
+def test_create_user_rejects_duplicate_email(tmp_path):
+    ds = SQLiteDatastore(tmp_path / "t.sqlite")
+    password_hash = hash_password("secret")
+    created = ds.create_user(email="a@example.com", role="member", password_hash=password_hash)
+    duplicate = ds.create_user(email="a@example.com", role="member", password_hash=password_hash)
+    assert created is not None
+    assert duplicate is None
