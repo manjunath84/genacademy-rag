@@ -309,3 +309,36 @@ def test_delete_route_removes_serving_doc_and_leaves_eval_pristine(monkeypatch, 
     assert deleted == ["pdf/abc"]
     assert reindexed == [[]]
     assert datastore.get_document("pdf/abc")["status"] == "deleted"
+
+
+def test_ask_requires_csrf_and_writes_usage_row(monkeypatch, tmp_path):
+    c = _client(monkeypatch, tmp_path)
+    _login(c)
+    forbidden = c.post("/ask", data={"question": "what is RAG?"})
+    assert forbidden.status_code == 403
+    page = c.get("/")
+    ok = c.post("/ask", data={"question": "what is RAG?", "csrf_token": _csrf(page.text)})
+    assert ok.status_code == 200
+    rows = c.app.state.datastore.recent_usage(limit=10)
+    assert len(rows) == 1
+    assert rows[0]["question"] == "what is RAG?"
+    assert rows[0]["user_email"] == "member@genacademy.local"
+
+
+def test_dashboard_renders_usage_summary(monkeypatch, tmp_path):
+    c = _client(monkeypatch, tmp_path)
+    _login(c, "admin@genacademy.local", "admin")
+    c.app.state.datastore.log_query(
+        user_email="member@genacademy.local",
+        question="What is RAG?",
+        refused=False,
+        confidence=5,
+        used_fallback=False,
+        n_citations=2,
+        latency_ms=100,
+    )
+    r = c.get("/admin/dashboard")
+    assert r.status_code == 200
+    assert "Total queries" in r.text
+    assert "What is RAG?" in r.text
+    assert "<svg" in r.text

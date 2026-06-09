@@ -1,0 +1,41 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Admin dashboard</title>
+<script src="https://cdn.tailwindcss.com"></script></head>
+<body class="bg-slate-50 min-h-screen">
+<main class="max-w-5xl mx-auto p-6 space-y-6">
+  <h1 class="text-2xl font-semibold">Dashboard</h1>
+  <section class="grid grid-cols-2 md:grid-cols-5 gap-3">
+    <div class="bg-white rounded shadow p-3"><p class="text-xs text-slate-500">Total queries</p><p class="text-2xl">{{ summary.total_queries }}</p></div>
+    <div class="bg-white rounded shadow p-3"><p class="text-xs text-slate-500">Refusal rate</p><p class="text-2xl">{{ "%.0f"|format(summary.refusal_rate * 100) }}%</p></div>
+    <div class="bg-white rounded shadow p-3"><p class="text-xs text-slate-500">Fallback rate</p><p class="text-2xl">{{ "%.0f"|format(summary.fallback_rate * 100) }}%</p></div>
+    <div class="bg-white rounded shadow p-3"><p class="text-xs text-slate-500">p50</p><p class="text-2xl">{{ summary.latency_p50_ms }} ms</p></div>
+    <div class="bg-white rounded shadow p-3"><p class="text-xs text-slate-500">p95</p><p class="text-2xl">{{ summary.latency_p95_ms }} ms</p></div>
+  </section>
+  <section class="bg-white rounded shadow p-4">
+    <h2 class="font-semibold mb-3">Queries by day</h2>
+    <svg width="100%" height="120" role="img">
+      {% for row in summary.queries_by_day %}
+      <rect x="{{ loop.index0 * 70 }}" y="{{ 110 - (row.count * 20) }}" width="48" height="{{ row.count * 20 }}" fill="#0f172a"></rect>
+      <text x="{{ loop.index0 * 70 }}" y="118" font-size="10">{{ row.day[5:] }}</text>
+      {% endfor %}
+    </svg>
+  </section>
+  <section class="bg-white rounded shadow p-4">
+    <h2 class="font-semibold mb-3">Top questions</h2>
+    <ul class="space-y-1">
+      {% for row in summary.top_questions %}
+      <li class="flex justify-between border-b py-1"><span>{{ row.question }}</span><span>{{ row.count }}</span></li>
+      {% endfor %}
+    </ul>
+  </section>
+  <section class="bg-white rounded shadow p-4">
+    <h2 class="font-semibold mb-3">Recent usage</h2>
+    <table class="w-full text-sm">
+      <thead><tr><th class="text-left p-2">Time</th><th class="text-left p-2">User</th><th class="text-left p-2">Question</th><th class="text-left p-2">Refused</th><th class="text-left p-2">Latency</th></tr></thead>
+      <tbody>
+      {% for row in rows %}
+        <tr class="border-t"><td class="p-2">{{ row.ts }}</td><td class="p-2">{{ row.user_email }}</td><td class="p-2">{{ row.question }}</td><td class="p-2">{{ row.refused }}</td><td class="p-2">{{ row.latency_ms }} ms</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </section>
+</main></body></html>

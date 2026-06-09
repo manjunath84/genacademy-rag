@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import hmac
 import secrets
+import time
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -37,6 +38,7 @@ def create_app(
     qp = QueryPipeline(retriever=retriever, provider=provider)
 
     app = FastAPI()
+    app.state.datastore = datastore
     app.add_middleware(SessionMiddleware, secret_key=settings.session_secret, same_site="lax")
 
     def current_user(request: Request) -> str | None:
@@ -149,7 +151,18 @@ def create_app(
             return RedirectResponse("/login", status_code=303)
         if not valid_csrf(request, csrf_token_value):
             return csrf_forbidden()
+        start = time.perf_counter()
         result = qp.answer(question)
+        latency_ms = int((time.perf_counter() - start) * 1000)
+        datastore.log_query(
+            user_email=current_user(request),
+            question=question,
+            refused=result.refused,
+            confidence=result.confidence,
+            used_fallback=result.used_fallback,
+            n_citations=len(result.citations),
+            latency_ms=latency_ms,
+        )
         return TEMPLATES.TemplateResponse(
             request, "chat.html", csrf_context(request, {"result": result, "question": question})
         )
@@ -250,6 +263,20 @@ def create_app(
             request,
             "admin_documents.html",
             csrf_context(request, {"documents": datastore.list_documents()}),
+        )
+
+    @app.get("/admin/dashboard", response_class=HTMLResponse)
+    def admin_dashboard(request: Request):
+        if not require_admin(request):
+            return HTMLResponse("Forbidden", status_code=403)
+        from genacademy_rag.core.analytics import usage_summary
+
+        rows = datastore.recent_usage(limit=500)
+        summary = usage_summary(rows)
+        return TEMPLATES.TemplateResponse(
+            request,
+            "admin_dashboard.html",
+            csrf_context(request, {"summary": summary, "rows": rows}),
         )
 
     @app.post("/admin/documents/delete")
