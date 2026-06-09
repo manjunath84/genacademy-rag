@@ -85,7 +85,7 @@ class HybridRetriever:
             fused = rrf_fuse([dense_ids, sparse_ids], k=self._rrf_k)        # ranking signal
             ranked = sorted(fused, key=fused.get, reverse=True)[:self._top_k]
             # score = cosine similarity (the grader's confidence signal); 0.0 for BM25-only hits.
-            # RRF decides ORDER; cosine sim is carried separately so the grader fallback is meaningful.
+            # RRF decides ORDER; cosine sim is carried separately for the grader fallback.
             return [
                 RetrievedChunk(chunk=index.chunks_by_id[cid], score=sim_by_id.get(cid, 0.0))
                 for cid in ranked

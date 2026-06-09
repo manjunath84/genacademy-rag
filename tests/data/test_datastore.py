@@ -1,5 +1,5 @@
-from concurrent.futures import ThreadPoolExecutor
 import sqlite3
+from concurrent.futures import ThreadPoolExecutor
 
 from genacademy_rag.core.security import hash_password, is_bcrypt_hash, verify_password
 from genacademy_rag.core.types import Chunk, Citation
@@ -132,7 +132,9 @@ def test_generate_redeem_and_reject_reuse_of_invite(tmp_path):
 def test_redeem_rejects_bad_secret_revoked_and_expired(tmp_path):
     ds = SQLiteDatastore(tmp_path / "t.sqlite")
     active = ds.generate_invite(role="member", created_by="admin@genacademy.local", expires_at=None)
-    revoked = ds.generate_invite(role="member", created_by="admin@genacademy.local", expires_at=None)
+    revoked = ds.generate_invite(
+        role="member", created_by="admin@genacademy.local", expires_at=None
+    )
     expired = ds.generate_invite(
         role="member",
         created_by="admin@genacademy.local",

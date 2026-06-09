@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 import threading
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Protocol
 
@@ -50,7 +50,7 @@ CREATE TABLE IF NOT EXISTS usage_log (
 
 
 def _utcnow_text() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    return datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
 
 
 class Datastore(Protocol):
@@ -201,7 +201,11 @@ class SQLiteDatastore:
                     return None
                 invite = dict(row)
                 expired = invite["expires_at"] is not None and invite["expires_at"] <= now
-                inactive = invite["used_at"] is not None or invite["revoked_at"] is not None or expired
+                inactive = (
+                    invite["used_at"] is not None
+                    or invite["revoked_at"] is not None
+                    or expired
+                )
                 if inactive or not verify_secret(secret, invite["secret_hash"]):
                     self._conn.rollback()
                     return None

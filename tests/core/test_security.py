@@ -1,6 +1,5 @@
 from genacademy_rag.core.security import (
     hash_password,
-    hash_secret,
     is_bcrypt_hash,
     new_invite_code,
     split_invite_code,

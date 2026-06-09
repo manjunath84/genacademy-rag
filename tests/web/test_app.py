@@ -342,3 +342,32 @@ def test_dashboard_renders_usage_summary(monkeypatch, tmp_path):
     assert "Total queries" in r.text
     assert "What is RAG?" in r.text
     assert "<svg" in r.text
+
+
+def test_phase1_demo_flow(monkeypatch, tmp_path):
+    c = _client(monkeypatch, tmp_path)
+    _login(c, "admin@genacademy.local", "admin")
+    invites = c.get("/admin/invites")
+    generated = c.post(
+        "/admin/invites",
+        data={"role": "member", "expires_days": "7", "csrf_token": _csrf(invites.text)},
+    )
+    code = re.search(r"Invite code: ([^<]+)<", generated.text).group(1)
+    signup = c.get("/signup")
+    created = c.post(
+        "/signup",
+        data={
+            "email": "cohort@example.com",
+            "password": "secret",
+            "code": code,
+            "csrf_token": _csrf(signup.text),
+        },
+        follow_redirects=False,
+    )
+    assert created.status_code == 303
+    chat = c.get("/")
+    asked = c.post("/ask", data={"question": "what is RAG?", "csrf_token": _csrf(chat.text)})
+    assert asked.status_code == 200
+    _login(c, "admin@genacademy.local", "admin")
+    dashboard = c.get("/admin/dashboard")
+    assert "what is RAG?" in dashboard.text
