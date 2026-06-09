@@ -58,8 +58,8 @@ accurate for pairwise ranking. An LLM-as-reranker is flexible but introduces net
 nondeterminism, and a second live-model dependency in the protected eval path.
 
 **Decision: local Sentence Transformers cross-encoder.** Use the bi-encoder for candidate generation
-and the cross-encoder for final ordering over about 20 candidates. No LLM calls enter the retrieval
-eval.
+and the cross-encoder for final ordering over the fused candidate union (at most ~40 candidates).
+No LLM calls enter the retrieval eval.
 
 **How an interviewer probes it.**
 
@@ -110,20 +110,27 @@ as the default.
 
 **Tradeoffs.** Reranking dense candidates before BM25 throws away the lexical exact-match path.
 Reranking only the final top 5 is too late; a relevant candidate ranked 6-20 can never move into the
-answer context. Reranking the full corpus is infeasible. The current retriever already has the correct
-two-stage shape: dense and sparse recall first, RRF to produce a bounded candidate pool, then final
-ordering.
+answer context. Reranking the full corpus is infeasible in general. The current retriever already has
+the correct two-stage shape: dense and sparse recall first, RRF to produce a bounded candidate pool,
+then final ordering. An earlier draft truncated the pool to top-`candidate_k`-by-RRF before rerank;
+independent review flagged that this makes any candidate RRF-ranked 21+ unrescuable — defeating
+rerank's purpose, since RRF mis-ranking is exactly what rerank exists to fix — at a saving of only
+~20 pairs (~16 ms at 0.8 ms/pair) on a 53-chunk corpus.
 
-**Decision: rerank the top `candidate_k` pool after RRF fusion and before `top_k=5` truncation.**
+**Decision: rerank the full RRF-fused candidate union (<= 2 * candidate_k pairs) after fusion and
+before `top_k=5` truncation; `rerank_pool` is a setting defaulting to the full union.**
 Dense/BM25/RRF remain the recall stage; cross-encoder is the precision/order stage.
 
 **How an interviewer probes it.**
 
 - *"Why not rerank after top_k?"* -> because rerank cannot recover candidates that were already cut.
 - *"Why not feed it BM25-only candidates too?"* -> we do. BM25 and dense are fused first, then the
-  RRF candidate pool is reranked.
-- *"What bounds latency?"* -> `candidate_k=20`. The cross-encoder sees at most about 20 pairs per
-  query, not the full collection.
+  full fused union is reranked.
+- *"What bounds latency?"* -> each source list is capped at `candidate_k=20`, so the cross-encoder
+  sees at most ~40 pairs per query (~32 ms warm on CPU), not the full collection. On a larger
+  corpus, `rerank_pool` truncates by RRF rank explicitly instead of silently.
+- *"Why not truncate by RRF first?"* -> truncating before rerank reintroduces the exact failure
+  mode rerank is meant to fix: a relevant candidate that RRF under-ranked can never be rescued.
 
 ---
 
@@ -153,6 +160,12 @@ scores are local ordering data, not the public confidence field.
   the best candidates.
 - *"How do you enforce it?"* -> regression tests set fake reranker scores that differ obviously from
   cosine and assert the returned `RetrievedChunk.score` remains the original cosine value.
+- *"Does the invariant make rerank invisible to the refusal path?"* -> no, and that is stated, not
+  hidden. The fallback takes `max(score)` over whichever chunks occupy the final top_k; rerank
+  changes that membership. If rerank promotes BM25-only chunks (score `0.0`) and displaces dense
+  hits, the max cosine drops and fallback refusal behavior can change. The field's semantics are
+  protected; behavioral identity of the fallback is not, and the eval delta must report any such
+  refusal changes.
 
 ---
 
@@ -179,6 +192,13 @@ fixed scoring code.
   scorer requires matching `commit_hash` provenance.
 - *"Why include latency in the eval delta?"* -> rerank trades compute for ranking quality. A quality
   delta without a latency delta is an incomplete engineering claim.
+- *"Is the delta statistically meaningful?"* -> the honest answer is stated in the report: only ~12
+  retrieval-scored questions exist, so one question flipping moves aggregate recall/MRR by ~0.08.
+  Per-question movement is the evidence; aggregate deltas smaller than one question's worth are
+  noise, and no significance claim is made at this N.
+- *"How is the run itself reproducible?"* -> committed eval-delta runs pin
+  `GENACADEMY_RERANK_DEVICE=cpu` (MPS/CUDA float math can perturb near-tie orderings), and the
+  rerank sort is a stable sort over deterministic RRF order, so ties cannot reorder between runs.
 
 ---
 
@@ -195,8 +215,10 @@ runtime failure explicit: if the model is not provisioned, rerank-enabled eval s
 before reporting metrics.
 
 **Decision: rerank runtime supports `local_files_only=true`; tests use a fake reranker and never load
-the real model.** A one-time model provisioning step is acceptable for local demos, but not hidden
-inside deterministic tests.
+the real model.** Model provisioning is an explicit one-time task (a documented script or
+`huggingface-cli download` command — the only place `local_files_only=false` is acceptable), not a
+side effect hidden inside tests or eval runs. On a fresh clone with `local_files_only=true` and no
+cached model, rerank-enabled runs fail with a clear setup error naming the provisioning task.
 
 **How an interviewer probes it.**
 
@@ -222,8 +244,9 @@ extra forward pass over the actual candidate pool.
 
 **Decision: report both startup/model-load cost and per-query retrieval latency, but judge the request
 budget on warm rerank latency.** Phase A measurement on this machine showed about `590 ms` local-only
-cached model load and about `16 ms` warm scoring for 20 pairs; Phase C must measure real eval-question
-latency and commit it in `eval/phase2-rerank-delta.md`.
+cached model load and about `16 ms` warm scoring for 20 pairs (`0.8 ms/pair`; the full fused union of
+<= 40 pairs extrapolates to ~32 ms); Phase C must measure real eval-question latency on the pinned
+`device=cpu` configuration and commit it in `eval/phase2-rerank-delta.md`.
 
 **How an interviewer probes it.**
 

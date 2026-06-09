@@ -109,24 +109,28 @@ query -> embed(query)
       -> RetrievedChunk(score = cosine similarity)
 ```
 
-Rerank should slot **after RRF fusion and before final `top_k` truncation**:
+Rerank should slot **after RRF fusion and before final `top_k` truncation**, over the **full fused
+candidate union** (revised per independent review):
 
 ```text
 query -> embed(query)
       -> dense_hits = Chroma query top candidate_k
       -> sparse_ids = BM25 top candidate_k
       -> fused = RRF(dense_ids, sparse_ids)
-      -> candidate_ids = top candidate_k by RRF
-      -> rerank(query, candidate chunks)
-      -> ranked = top_k by CrossEncoder score
+      -> pool = ALL fused candidates (union of both lists, <= 2 * candidate_k),
+                optionally capped by rerank_pool when set
+      -> rerank(query, pool chunks)
+      -> ranked = top_k by CrossEncoder score (stable sort; ties keep RRF order)
       -> RetrievedChunk(score = original cosine similarity)
 ```
 
 Details:
 
-- Dense and BM25 still generate the recall-oriented pool.
-- RRF still decides which candidates are eligible for reranking.
-- The cross-encoder reranks only that bounded `candidate_k` pool, not the full corpus.
+- Dense and BM25 still generate the recall-oriented pool; each list is already capped at
+  `candidate_k`, so the fused union is bounded at `2 * candidate_k` (40 pairs worst case).
+- The cross-encoder reranks that full fused union, not the full corpus.
+- `rerank_pool` is a setting; default (unset/0) means the full fused union. A smaller value
+  truncates the pool by RRF rank, for latency control on larger corpora only.
 - If rerank is disabled, behavior remains today's exact RRF -> `top_k` flow.
 - If a candidate is BM25-only, `RetrievedChunk.score` remains `0.0`, same as today.
 
@@ -139,10 +143,13 @@ Why not rerank after `top_k=5`:
 
 - Too late. The candidate that should move into the answer context may already have been cut.
 
-Why not rerank the full union of dense top 20 and sparse top 20:
+Why not truncate to top `candidate_k` by RRF before rerank (the original draft's choice):
 
-- The explicit Phase 2 slice says rerank the `candidate_k` pool. RRF should reduce the union to a
-  predictable bounded pool first. This also keeps latency predictable.
+- The eval corpus is 53 chunks; the fused union is at most 40 candidates. Truncating to
+  top-20-by-RRF means a candidate RRF-ranked 21+ can never be rescued by the cross-encoder —
+  which defeats rerank's purpose, since RRF mis-ranking is exactly what rerank exists to fix.
+- The marginal cost is ~20 extra pairs at ~0.8 ms/pair (~16 ms), trivially inside the latency
+  budget. On a corpus where the union grows, `rerank_pool` restores the bound explicitly.
 
 ---
 
@@ -161,6 +168,9 @@ Implementation:
 - It builds pairs as `[(query, chunk.text), ...]`.
 - It calls `model.predict(pairs, batch_size=settings.rerank_batch_size)`.
 - It returns chunks ordered by descending score, with scores kept internal to the retriever path.
+- **Tie-break determinism requirement:** the rerank sort must be a stable sort over the
+  deterministic RRF-ordered input, so equal rerank scores preserve RRF order. The retrieval
+  pipeline must produce an identical ranking on repeated runs over the same corpus and query.
 
 Testing seam:
 
@@ -183,6 +193,7 @@ GENACADEMY_RERANK_ENABLED=false
 GENACADEMY_RERANK_MODEL=cross-encoder/ms-marco-MiniLM-L6-v2
 GENACADEMY_RERANK_LOCAL_FILES_ONLY=true
 GENACADEMY_RERANK_BATCH_SIZE=32
+GENACADEMY_RERANK_POOL=0
 GENACADEMY_RERANK_DEVICE=
 GENACADEMY_RERANK_CACHE_DIR=
 ```
@@ -190,10 +201,20 @@ GENACADEMY_RERANK_CACHE_DIR=
 Notes:
 
 - `GENACADEMY_RERANK_ENABLED=false` preserves Phase 0/1 behavior by default.
+- `GENACADEMY_RERANK_POOL=0` (default) reranks the full RRF-fused candidate union
+  (`<= 2 * candidate_k`). A positive value truncates the pool by RRF rank — a latency knob for
+  larger corpora, not the default.
 - `GENACADEMY_RERANK_LOCAL_FILES_ONLY=true` protects reproducible eval runs from accidental network
-  downloads. A developer may temporarily set it false only for a documented provisioning step.
-- `GENACADEMY_RERANK_DEVICE` is optional; when empty, Sentence Transformers chooses. This keeps CPU
-  local default simple while allowing `mps`/`cuda` locally.
+  downloads. With this set, a fresh clone without the cached model must fail with a clear setup
+  error pointing at the provisioning task — never silently download during an eval run.
+- **Model provisioning is an explicit, one-time task**, not a side effect: a documented command
+  (e.g. `uv run python scripts/provision_rerank_model.py`, or an equivalent documented
+  `huggingface-cli download` step) that fetches the model into the cache dir. It is the only place
+  `local_files_only=false` is acceptable.
+- `GENACADEMY_RERANK_DEVICE` is optional and stays configurable at runtime; when empty, Sentence
+  Transformers chooses (`mps` on this machine). **Committed eval-delta runs pin
+  `GENACADEMY_RERANK_DEVICE=cpu`** so the committed artifact is reproducible across runs and
+  machines — MPS/CUDA float math can perturb near-tie orderings.
 - No secrets are introduced. Existing generation API keys remain env-only.
 
 The web app and scripts should construct the reranker only when enabled and pass it into
@@ -226,11 +247,23 @@ Implementation rule:
   does.
 - Do not add a `score` overload or mutate `RetrievedChunk`.
 
+One behavioral consequence the invariant does **not** prevent (state it, don't hide it):
+
+- The grader fallback computes `max(r.score for r in retrieved)` over whichever chunks occupy the
+  final `top_k`. Rerank changes that membership. If the reranker promotes BM25-only chunks
+  (which carry `0.0`) into top_k and displaces dense hits, the max cosine seen by the fallback
+  drops, and a question that answered under baseline can refuse under rerank (or vice versa).
+- This is accepted: the invariant protects the *field's semantics*, not fallback-path behavioral
+  identity. The eval-delta report must note any refusal-behavior changes attributable to top_k
+  membership shifts, and a regression test must pin the mechanism (fake reranker promotes a
+  BM25-only chunk; assert the fallback grade follows the new top_k's max cosine).
+
 Regression tests must cover:
 
 - reranker score does not appear in `RetrievedChunk.score`
 - BM25-only candidate still carries `0.0`
 - grader cosine fallback still answers/refuses based on cosine, not reranker logits
+- rerank-induced top_k membership change flows through to the fallback's max-cosine as designed
 
 ---
 
@@ -252,8 +285,9 @@ Budget:
 
 - Startup/model-load cost is acceptable if the model loads once at process startup or first enabled
   retrieval.
-- Per-query rerank cost target: under `150 ms` p95 over the eval set for `candidate_k=20` on local
-  CPU/MPS hardware.
+- Per-query rerank cost target: under `150 ms` p95 over the eval set for the full fused union
+  (`<= 2 * candidate_k = 40` pairs; ~32 ms extrapolated from the 0.8 ms/pair measurement) on local
+  CPU hardware.
 - If measured p95 exceeds `300 ms`, keep rerank disabled by default and document the cause in the
   delta report.
 
@@ -280,10 +314,12 @@ GENACADEMY_RERANK_ENABLED=false uv run python scripts/eval_retrieval.py \
   --json-out eval/runs/phase2-rerank-baseline.json
 ```
 
-Rerank command:
+Rerank command (committed runs pin `device=cpu` for reproducibility; the device stays
+configurable for non-committed local use):
 
 ```bash
-GENACADEMY_RERANK_ENABLED=true uv run python scripts/eval_retrieval.py \
+GENACADEMY_RERANK_ENABLED=true GENACADEMY_RERANK_DEVICE=cpu \
+  uv run python scripts/eval_retrieval.py \
   --json-out eval/runs/phase2-rerank-enabled.json
 ```
 
@@ -293,7 +329,8 @@ Expected script additions in Phase C:
 - The default printed one-line summary remains for continuity with Phase 0.
 - Latency fields include at least `retrieval_ms_mean`, `retrieval_ms_p50`, `retrieval_ms_p95`, and
   per-question `retrieval_ms`.
-- Rerank run records `rerank_enabled=true`, `rerank_model`, `candidate_k`, `top_k`, and
+- Rerank run records `rerank_enabled=true`, `rerank_model`, `candidate_k`, `top_k`,
+  `rerank_pool` (0 = full union), `rerank_device`, `rerank_batch_size`, and
   `rerank_local_files_only`.
 
 Committed delta artifact:
@@ -304,11 +341,15 @@ eval/phase2-rerank-delta.md
 
 That markdown file should contain:
 
-- environment/config snapshot relevant to retrieval
+- environment/config snapshot relevant to retrieval (including the pinned `device=cpu`)
 - baseline vs rerank metrics table
 - latency table
 - per-question movement table showing recall/MRR changes and top retrieved source movement
 - short interpretation: helped, hurt, unchanged, and why
+- **small-N caveat stated explicitly:** only ~12 retrieval-scored questions exist, so a single
+  question flipping moves aggregate recall/MRR by roughly 0.08. Per-question movement is the
+  meaningful evidence; aggregate deltas smaller than one question's worth are noise, and no
+  statistical-significance claim is honest at this N.
 
 Acceptance posture:
 
@@ -331,11 +372,17 @@ Tests should be TDD and offline:
 - `tests/core/test_retriever.py`
   - disabled rerank preserves existing RRF behavior
   - enabled rerank reorders the RRF candidate pool before `top_k`
-  - rerank sees at most `candidate_k` chunks
+  - rerank sees the full fused union (a candidate RRF-ranked below `top_k`, present in only one
+    source list, can be rescued into the final `top_k`)
+  - `rerank_pool=N` truncates the pool by RRF rank when set
+  - tie-break determinism: equal rerank scores preserve RRF order (stable sort); repeated
+    retrieval over the same corpus and query yields an identical ranking
   - `RetrievedChunk.score` remains cosine similarity, not reranker score
   - BM25-only hits still return score `0.0`
 - `tests/core/test_grader.py`
   - cosine fallback still uses `RetrievedChunk.score` correctly with reranked retrieval
+  - rerank-induced top_k membership change (fake reranker promotes a BM25-only chunk) flows
+    through to the fallback's max-cosine as designed (section 7)
 - `tests/test_config.py`
   - new rerank env settings parse correctly
   - default disabled
@@ -349,16 +396,17 @@ Verification commands for Phase C:
 uv run pytest
 uv run ruff check src tests scripts
 GENACADEMY_RERANK_ENABLED=false uv run python scripts/eval_retrieval.py --json-out eval/runs/phase2-rerank-baseline.json
-GENACADEMY_RERANK_ENABLED=true uv run python scripts/eval_retrieval.py --json-out eval/runs/phase2-rerank-enabled.json
+GENACADEMY_RERANK_ENABLED=true GENACADEMY_RERANK_DEVICE=cpu uv run python scripts/eval_retrieval.py --json-out eval/runs/phase2-rerank-enabled.json
 ```
 
 ---
 
 ## 11. Open Review Questions
 
-1. Should rerank use the top `candidate_k` after RRF, or the full dense/sparse union capped by
-   `2 * candidate_k`? This design chooses top `candidate_k` after RRF to match the prompt and bound
-   latency.
+1. ~~Should rerank use the top `candidate_k` after RRF, or the full dense/sparse union capped by
+   `2 * candidate_k`?~~ **Resolved by independent review: rerank the full fused union** (default
+   `rerank_pool=0`), because truncating a 53-chunk corpus's <= 40-candidate union to top-20-by-RRF
+   makes RRF-rank-21+ candidates unrescuable at a trivial ~16 ms marginal cost. See section 4.
 2. Should the model be loaded lazily on the first reranked query or eagerly during app/eval startup?
    This design prefers lazy construction at wiring time when the flag is enabled, then reuse.
 3. Should the eval script fail hard when `GENACADEMY_RERANK_ENABLED=true` and the model is not cached
