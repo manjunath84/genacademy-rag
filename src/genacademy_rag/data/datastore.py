@@ -8,7 +8,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Protocol
 
-from genacademy_rag.core.security import hash_password, is_bcrypt_hash
+from genacademy_rag.core.security import (
+    hash_password,
+    is_bcrypt_hash,
+    new_invite_code,
+    split_invite_code,
+    verify_secret,
+)
 from genacademy_rag.core.types import Chunk
 
 SCHEMA = """
@@ -120,6 +126,105 @@ class SQLiteDatastore:
             except sqlite3.IntegrityError:
                 self._conn.rollback()
                 return None
+            return self.get_user_by_email(email)
+
+    def generate_invite(
+        self,
+        *,
+        role: str,
+        created_by: str,
+        expires_at: str | None,
+    ) -> dict:
+        code_id, secret, secret_hash = new_invite_code()
+        with self._lock:
+            self._conn.execute(
+                "INSERT INTO invite_codes(id, secret_hash, role, created_by, expires_at) "
+                "VALUES (?,?,?,?,?)",
+                (code_id, secret_hash, role, created_by, expires_at),
+            )
+            self._conn.commit()
+        return {
+            "id": code_id,
+            "code": f"{code_id}.{secret}",
+            "role": role,
+            "created_by": created_by,
+            "expires_at": expires_at,
+        }
+
+    def list_invites(self) -> list[dict]:
+        now = _utcnow_text()
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT id, role, created_by, created_at, expires_at, used_by, used_at, "
+                "revoked_at FROM invite_codes ORDER BY created_at DESC, id DESC"
+            ).fetchall()
+        out: list[dict] = []
+        for row in rows:
+            item = dict(row)
+            if item["revoked_at"]:
+                status = "revoked"
+            elif item["used_at"]:
+                status = "used"
+            elif item["expires_at"] and item["expires_at"] <= now:
+                status = "expired"
+            else:
+                status = "active"
+            item["status"] = status
+            out.append(item)
+        return out
+
+    def revoke_invite(self, code_id: str) -> bool:
+        with self._lock:
+            cur = self._conn.execute(
+                "UPDATE invite_codes SET revoked_at=? "
+                "WHERE id=? AND used_at IS NULL AND revoked_at IS NULL",
+                (_utcnow_text(), code_id),
+            )
+            self._conn.commit()
+            return cur.rowcount == 1
+
+    def redeem_invite(self, *, raw_code: str, email: str, password_hash: str) -> dict | None:
+        parts = split_invite_code(raw_code)
+        if parts is None:
+            return None
+        code_id, secret = parts
+        now = _utcnow_text()
+        with self._lock:
+            try:
+                self._conn.execute("BEGIN IMMEDIATE")
+                row = self._conn.execute(
+                    "SELECT * FROM invite_codes WHERE id=?",
+                    (code_id,),
+                ).fetchone()
+                if row is None:
+                    self._conn.rollback()
+                    return None
+                invite = dict(row)
+                expired = invite["expires_at"] is not None and invite["expires_at"] <= now
+                inactive = invite["used_at"] is not None or invite["revoked_at"] is not None or expired
+                if inactive or not verify_secret(secret, invite["secret_hash"]):
+                    self._conn.rollback()
+                    return None
+                cur = self._conn.execute(
+                    "UPDATE invite_codes SET used_by=?, used_at=? "
+                    "WHERE id=? AND used_at IS NULL AND revoked_at IS NULL "
+                    "AND (expires_at IS NULL OR expires_at>?)",
+                    (email, now, code_id, now),
+                )
+                if cur.rowcount != 1:
+                    self._conn.rollback()
+                    return None
+                self._conn.execute(
+                    "INSERT INTO users(email, role, password) VALUES (?,?,?)",
+                    (email, invite["role"], password_hash),
+                )
+                self._conn.commit()
+            except sqlite3.IntegrityError:
+                self._conn.rollback()
+                return None
+            except Exception:
+                self._conn.rollback()
+                raise
             return self.get_user_by_email(email)
 
     def add_document(

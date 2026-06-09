@@ -1,3 +1,4 @@
+from concurrent.futures import ThreadPoolExecutor
 import sqlite3
 
 from genacademy_rag.core.security import hash_password, is_bcrypt_hash, verify_password
@@ -105,3 +106,78 @@ def test_create_user_rejects_duplicate_email(tmp_path):
     duplicate = ds.create_user(email="a@example.com", role="member", password_hash=password_hash)
     assert created is not None
     assert duplicate is None
+
+
+def test_generate_redeem_and_reject_reuse_of_invite(tmp_path):
+    ds = SQLiteDatastore(tmp_path / "t.sqlite")
+    invite = ds.generate_invite(role="member", created_by="admin@genacademy.local", expires_at=None)
+    assert invite["code"].startswith(invite["id"] + ".")
+    user = ds.redeem_invite(
+        raw_code=invite["code"],
+        email="new@example.com",
+        password_hash=hash_password("pw"),
+    )
+    reused = ds.redeem_invite(
+        raw_code=invite["code"],
+        email="other@example.com",
+        password_hash=hash_password("pw"),
+    )
+    assert user is not None and user["role"] == "member"
+    assert reused is None
+    listed = ds.list_invites()
+    assert listed[0]["status"] == "used"
+    assert listed[0]["used_by"] == "new@example.com"
+
+
+def test_redeem_rejects_bad_secret_revoked_and_expired(tmp_path):
+    ds = SQLiteDatastore(tmp_path / "t.sqlite")
+    active = ds.generate_invite(role="member", created_by="admin@genacademy.local", expires_at=None)
+    revoked = ds.generate_invite(role="member", created_by="admin@genacademy.local", expires_at=None)
+    expired = ds.generate_invite(
+        role="member",
+        created_by="admin@genacademy.local",
+        expires_at="2000-01-01 00:00:00",
+    )
+    ds.revoke_invite(revoked["id"])
+    assert (
+        ds.redeem_invite(
+            raw_code=active["id"] + ".wrong",
+            email="bad@example.com",
+            password_hash=hash_password("pw"),
+        )
+        is None
+    )
+    assert (
+        ds.redeem_invite(
+            raw_code=revoked["code"],
+            email="revoked@example.com",
+            password_hash=hash_password("pw"),
+        )
+        is None
+    )
+    assert (
+        ds.redeem_invite(
+            raw_code=expired["code"],
+            email="expired@example.com",
+            password_hash=hash_password("pw"),
+        )
+        is None
+    )
+
+
+def test_concurrent_redeem_allows_exactly_one_winner(tmp_path):
+    ds = SQLiteDatastore(tmp_path / "t.sqlite")
+    invite = ds.generate_invite(role="member", created_by="admin@genacademy.local", expires_at=None)
+
+    def redeem(i: int) -> bool:
+        user = ds.redeem_invite(
+            raw_code=invite["code"],
+            email=f"user{i}@example.com",
+            password_hash=hash_password("pw"),
+        )
+        return user is not None
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        results = list(pool.map(redeem, range(8)))
+    assert results.count(True) == 1
+    assert results.count(False) == 7
