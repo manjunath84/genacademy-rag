@@ -31,7 +31,8 @@ DATA_DIR = REPO_ROOT / "data"
 
 
 def data_dir_from_env() -> Path:
-    return Path(os.environ.get("GENACADEMY_DATA_DIR", str(DATA_DIR)))
+    raw = os.environ.get("GENACADEMY_DATA_DIR")
+    return Path(raw) if raw else DATA_DIR
 
 
 def _env_bool(name: str, default: bool) -> bool:
@@ -93,6 +94,11 @@ class Settings:
 
     def __post_init__(self):
         if self.session_secret == "dev-only-change-me":
+            if self.secure_cookies:
+                raise ValueError(
+                    "GENACADEMY_SECURE_COOKIES=true requires a non-default "
+                    "GENACADEMY_SESSION_SECRET"
+                )
             warnings.warn(
                 "GENACADEMY_SESSION_SECRET is the default dev value — set it before deploying",
                 stacklevel=2,

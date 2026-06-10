@@ -31,8 +31,17 @@ def test_dockerignore_excludes_local_state():
     assert "tests/" in dockerignore
 
 
+def test_start_script_bootstraps_then_runs_web_app():
+    start_script = Path("scripts/start_hf_space.sh").read_text()
+
+    assert "python -m genacademy_rag.deploy.bootstrap" in start_script
+    assert "uvicorn genacademy_rag.web.main:app" in start_script
+
+
 def test_env_example_is_docker_env_file_compatible():
-    for line in Path(".env.example").read_text().splitlines():
+    lines = Path(".env.example").read_text().splitlines()
+    assert "# GENACADEMY_DATA_DIR=/absolute/path/to/data" in lines
+    for line in lines:
         stripped = line.strip()
         if not stripped or stripped.startswith("#") or "=" not in stripped:
             continue

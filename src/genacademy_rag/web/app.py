@@ -48,6 +48,7 @@ def create_app(
         same_site="lax",
         https_only=settings.secure_cookies,
     )
+    logger.info("session cookies: secure=%s", settings.secure_cookies)
 
     def current_user(request: Request) -> str | None:
         return request.session.get("email")

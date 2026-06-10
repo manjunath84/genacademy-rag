@@ -1,4 +1,4 @@
-from genacademy_rag.config import PROVIDER_PRESETS, Settings
+from genacademy_rag.config import DATA_DIR, PROVIDER_PRESETS, Settings
 
 
 def test_provider_preset_resolves_base_url_key_and_model(monkeypatch):
@@ -180,9 +180,33 @@ def test_deploy_data_dir_drives_default_paths(monkeypatch, tmp_path):
     assert s.sqlite_path == tmp_path / "deploy-data" / "genacademy.sqlite"
 
 
+def test_blank_deploy_data_dir_uses_default_paths(monkeypatch):
+    monkeypatch.setenv("GENACADEMY_DATA_DIR", "")
+    monkeypatch.delenv("GENACADEMY_CHROMA_DIR", raising=False)
+    monkeypatch.delenv("GENACADEMY_SQLITE", raising=False)
+
+    s = Settings.from_env()
+
+    assert s.chroma_dir == DATA_DIR / "chroma"
+    assert s.sqlite_path == DATA_DIR / "genacademy.sqlite"
+
+
 def test_secure_cookies_default_false_and_env_parse(monkeypatch):
     monkeypatch.delenv("GENACADEMY_SECURE_COOKIES", raising=False)
     assert Settings.from_env().secure_cookies is False
 
     monkeypatch.setenv("GENACADEMY_SECURE_COOKIES", "true")
+    monkeypatch.setenv("GENACADEMY_SESSION_SECRET", "test-secret")
     assert Settings.from_env().secure_cookies is True
+
+
+def test_secure_cookies_reject_default_session_secret(monkeypatch):
+    monkeypatch.setenv("GENACADEMY_SECURE_COOKIES", "true")
+    monkeypatch.delenv("GENACADEMY_SESSION_SECRET", raising=False)
+
+    try:
+        Settings.from_env()
+    except ValueError as exc:
+        assert "GENACADEMY_SESSION_SECRET" in str(exc)
+    else:
+        raise AssertionError("expected secure deploy to require a non-default session secret")

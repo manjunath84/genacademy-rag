@@ -22,7 +22,7 @@ Docker-based Hugging Face Space serving `genacademy_rag.web.main:app` on port `7
 | `GENACADEMY_DATA_DIR` | `/data` |
 | `GENACADEMY_SECURE_COOKIES` | `true` |
 | `GENACADEMY_VECTORSTORE` | `chroma` for the first deploy slice. |
-| `GENACADEMY_EMBEDDINGS` | `local` for deterministic first-boot corpus seeding. |
+| `GENACADEMY_EMBEDDINGS` | `local`; first-boot eval corpus seeding refuses non-local embeddings. |
 
 ## First Boot
 
@@ -33,7 +33,7 @@ only when the collection is empty.
 The first boot fetches the pinned eval corpus from GitHub, so outbound HTTPS must be available. With
 `set -euo pipefail` in `scripts/start_hf_space.sh`, the container exits if that fetch or ingest fails.
 
-If a previous boot was killed during ingest, run:
+If a previous boot was killed during ingest, run this inside the Space/container shell:
 
 ```bash
 uv run --no-sync python -m genacademy_rag.deploy.bootstrap --force
@@ -52,14 +52,18 @@ uv run python scripts/smoke_http.py --base-url http://127.0.0.1:7860
 Docker `--env-file` entries must be plain `KEY=value` lines. Keep comments on separate lines; Docker
 does not strip inline comments after values.
 
+Values in `--env-file .env` override Dockerfile defaults such as `GENACADEMY_DATA_DIR=/data` and
+`GENACADEMY_SECURE_COOKIES=true`. For a local browser login over plain HTTP, override secure cookies
+to `false`; for a Space-like local smoke, keep `GENACADEMY_DATA_DIR=/data`.
+
 ## Live Space Smoke
 
 ```bash
 uv run python scripts/smoke_http.py --base-url https://<namespace>-<space>.hf.space
 ```
 
-The HTTP smoke checks `/login` only. It proves the container booted, templates render, sessions are
-initialized, and CSRF is present. It does not spend generation tokens.
+The HTTP smoke checks `/login` only. It proves the container booted, templates render, and the CSRF
+render path works. It does not prove a cookie round-trip and does not spend generation tokens.
 
 ## Local HTTP Login Testing
 
@@ -76,6 +80,8 @@ HTTP.
   not a multi-process serving target in this slice.
 - The offline embedding model is baked into the Docker image under `HF_HOME=/app/.cache/huggingface`.
   Rebuild the image when changing `GENACADEMY_EMBED_MODEL`.
+- The rerank model is not baked into this Docker image. Leave `GENACADEMY_RERANK_ENABLED=false`
+  unless the rerank model is separately provisioned inside the image/cache.
 
 ## Postgres
 

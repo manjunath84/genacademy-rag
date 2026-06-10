@@ -23,6 +23,7 @@ def test_smoke_http_fails_when_login_marker_missing(monkeypatch):
 
     class _Response:
         status_code = 200
+        url = "https://example.test/login"
         text = "not the login page"
 
         def raise_for_status(self):
@@ -33,4 +34,8 @@ def test_smoke_http_fails_when_login_marker_missing(monkeypatch):
     with pytest.raises(SystemExit) as exc:
         smoke_http.main(["--base-url", "http://127.0.0.1:7860"])
 
-    assert "login marker not found" in str(exc.value)
+    message = str(exc.value)
+    assert "login marker not found" in message
+    assert "status=200" in message
+    assert "https://example.test/login" in message
+    assert "not the login page" in message

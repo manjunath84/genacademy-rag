@@ -1,6 +1,11 @@
 from genacademy_rag.config import Settings
 
 
+class _Chunk:
+    def __init__(self, doc_id):
+        self.doc_id = doc_id
+
+
 def _settings(tmp_path):
     return Settings(
         provider="openrouter",
@@ -38,14 +43,15 @@ def test_bootstrap_skips_when_eval_collection_has_chunks(monkeypatch, tmp_path, 
             state["collection"] = collection
 
         def get_all_chunks(self):
-            return [object()]
+            return [_Chunk("doc-a"), _Chunk("doc-b")]
 
     monkeypatch.setattr(bootstrap.Settings, "from_env", classmethod(lambda cls: settings))
     monkeypatch.setattr(bootstrap, "ChromaStore", _Store)
+    monkeypatch.setattr(bootstrap, "_expected_eval_doc_ids", lambda: {"doc-a", "doc-b"})
     monkeypatch.setattr(
         bootstrap,
         "_run_ingest",
-        lambda: state.__setitem__("ingest_called", True),
+        lambda *, reset_collection: state.__setitem__("ingest_called", True),
     )
 
     bootstrap.main([])
@@ -53,6 +59,40 @@ def test_bootstrap_skips_when_eval_collection_has_chunks(monkeypatch, tmp_path, 
     assert state["collection"] == "eval"
     assert state["ingest_called"] is False
     assert "eval collection already seeded" in capsys.readouterr().out
+
+
+def test_bootstrap_rejects_partial_eval_collection(monkeypatch, tmp_path):
+    import genacademy_rag.deploy.bootstrap as bootstrap
+
+    settings = _settings(tmp_path)
+    state = {"ingest_called": False}
+
+    class _Store:
+        def __init__(self, *, persist_dir, collection):
+            pass
+
+        def get_all_chunks(self):
+            return [_Chunk("doc-a")]
+
+    monkeypatch.setattr(bootstrap.Settings, "from_env", classmethod(lambda cls: settings))
+    monkeypatch.setattr(bootstrap, "ChromaStore", _Store)
+    monkeypatch.setattr(bootstrap, "_expected_eval_doc_ids", lambda: {"doc-a", "doc-b"})
+    monkeypatch.setattr(
+        bootstrap,
+        "_run_ingest",
+        lambda *, reset_collection: state.__setitem__("ingest_called", True),
+    )
+
+    try:
+        bootstrap.main([])
+    except SystemExit as exc:
+        message = str(exc)
+    else:
+        raise AssertionError("expected partial eval collection to abort bootstrap")
+
+    assert state["ingest_called"] is False
+    assert "1/2 expected docs" in message
+    assert "--force" in message
 
 
 def test_bootstrap_runs_ingest_when_eval_collection_empty(monkeypatch, tmp_path):
@@ -91,7 +131,7 @@ def test_bootstrap_force_reseeds_existing_eval_collection(monkeypatch, tmp_path)
             pass
 
         def get_all_chunks(self):
-            return [object()]
+            return [_Chunk("doc-a")]
 
     monkeypatch.setattr(bootstrap.Settings, "from_env", classmethod(lambda cls: settings))
     monkeypatch.setattr(bootstrap, "ChromaStore", _Store)
@@ -104,6 +144,36 @@ def test_bootstrap_force_reseeds_existing_eval_collection(monkeypatch, tmp_path)
     bootstrap.main(["--force"])
 
     assert state["reset"] is True
+
+
+def test_bootstrap_ingest_failure_has_operator_guidance(monkeypatch, tmp_path):
+    import genacademy_rag.deploy.bootstrap as bootstrap
+
+    settings = _settings(tmp_path)
+
+    class _Store:
+        def __init__(self, *, persist_dir, collection):
+            pass
+
+        def get_all_chunks(self):
+            return []
+
+    def fake_ingest(*, reset_collection):
+        raise bootstrap.subprocess.CalledProcessError(1, ["python", "-m", "scripts"])
+
+    monkeypatch.setattr(bootstrap.Settings, "from_env", classmethod(lambda cls: settings))
+    monkeypatch.setattr(bootstrap, "ChromaStore", _Store)
+    monkeypatch.setattr(bootstrap, "_run_ingest", fake_ingest)
+
+    try:
+        bootstrap.main([])
+    except SystemExit as exc:
+        message = str(exc)
+    else:
+        raise AssertionError("expected ingest failure to abort bootstrap")
+
+    assert "GENACADEMY_EMBEDDINGS=local" in message
+    assert "--force" in message
 
 
 def test_run_ingest_uses_module_subprocess(monkeypatch):

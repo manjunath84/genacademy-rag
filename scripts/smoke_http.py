@@ -16,8 +16,14 @@ def main(argv: list[str] | None = None) -> None:
     base_url = args.base_url.rstrip("/")
     response = requests.get(f"{base_url}/login", timeout=args.timeout)
     response.raise_for_status()
+    # Coupled to the login template's prefilled demo-member email plus CSRF hidden input.
     if "member@genacademy.local" not in response.text or 'name="csrf_token"' not in response.text:
-        raise SystemExit("login marker not found")
+        snippet = response.text[:200].replace("\n", " ")
+        final_url = getattr(response, "url", f"{base_url}/login")
+        raise SystemExit(
+            "login marker not found "
+            f"status={response.status_code} url={final_url} body={snippet!r}"
+        )
     print(f"HTTP SMOKE OK  base_url={base_url}")
 
 
