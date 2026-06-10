@@ -58,6 +58,17 @@ The main extension seams are:
 - embeddings: local `sentence-transformers` by default, Nebius embeddings preset available
 - chunker: fixed baseline plus section-aware chunking work
 
+## Architecture Diagrams
+
+The system diagrams are checked in under `docs/diagrams/`:
+
+- [System overview](diagrams/01-system-overview.svg)
+- [Query flow](diagrams/02-query-flow.svg)
+- [Ingest and two-tier corpus](diagrams/03-ingest-two-tier-corpus.svg)
+- [Hugging Face Space deployment](diagrams/04-deployment-hf-space.svg)
+
+The editable Draw.io source is [architecture.drawio](diagrams/architecture.drawio).
+
 ## Prompts Used While Building
 
 The build used agent-assisted prompts for planning, implementation, and review. The most important prompt categories were:
