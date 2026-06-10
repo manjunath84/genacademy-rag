@@ -20,6 +20,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from genacademy_rag.config import Settings, data_dir_from_env
 from genacademy_rag.core.pipeline import QueryPipeline
 from genacademy_rag.core.security import hash_password
+from genacademy_rag.core.sources import confidence_bucket
 from genacademy_rag.data.datastore import SQLiteDatastore
 from genacademy_rag.web.auth import authenticate
 
@@ -147,7 +148,12 @@ def create_app(
         if not current_user(request):
             return RedirectResponse("/login", status_code=302)
         return TEMPLATES.TemplateResponse(
-            request, "chat.html", csrf_context(request, {"result": None, "question": None})
+            request,
+            "chat.html",
+            csrf_context(
+                request,
+                {"result": None, "question": None, "query_id": None, "bucket": None},
+            ),
         )
 
     @app.post("/ask", response_class=HTMLResponse)
@@ -163,8 +169,9 @@ def create_app(
         start = time.perf_counter()
         result = qp.answer(question)
         latency_ms = int((time.perf_counter() - start) * 1000)
+        query_id = None
         try:
-            datastore.log_query(
+            query_id = datastore.log_query(
                 user_email=current_user(request),
                 question=question,
                 refused=result.refused,
@@ -176,7 +183,17 @@ def create_app(
         except Exception:
             logger.exception("usage log_query failed (question=%r)", question)
         return TEMPLATES.TemplateResponse(
-            request, "chat.html", csrf_context(request, {"result": result, "question": question})
+            request,
+            "chat.html",
+            csrf_context(
+                request,
+                {
+                    "result": result,
+                    "question": question,
+                    "query_id": query_id,
+                    "bucket": None if result.refused else confidence_bucket(result.confidence),
+                },
+            ),
         )
 
     @app.post("/feedback", response_class=HTMLResponse)

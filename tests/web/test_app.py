@@ -178,7 +178,6 @@ def test_feedback_rejects_bad_verdict(monkeypatch, tmp_path):
     assert r.status_code == 400
 
 
-@pytest.mark.xfail(reason="query_id field lands with the chat.html rebuild", strict=True)
 def test_feedback_happy_path_persists_and_returns_fragment(monkeypatch, tmp_path):
     c = _client(monkeypatch, tmp_path)
     _login(c)
@@ -189,6 +188,45 @@ def test_feedback_happy_path_persists_and_returns_fragment(monkeypatch, tmp_path
     assert r.status_code == 200
     assert "Thanks for the feedback" in r.text
     assert c.app.state.datastore.feedback_summary()["up"] == 1
+
+
+def test_answer_card_renders_badge_sources_disclaimer(monkeypatch, tmp_path):
+    c = _client(monkeypatch, tmp_path)
+    _login(c)
+    token = _csrf(c.get("/").text)
+    _, page = _ask_and_get_query_id(c, token)
+    assert "High confidence" in page
+    assert 'href="https://github.com/The-Gen-Academy/r/blob/abc123/README.md#L1-L2"' in page
+    assert "RAG retrieves then generates." in page
+    assert "it can make mistakes" in page
+    assert "copy" in page and "retry" in page
+
+
+def test_refused_card_has_refusal_badge_no_copy_no_sources(monkeypatch, tmp_path):
+    c = _client(monkeypatch, tmp_path, refused=True)
+    _login(c)
+    token = _csrf(c.get("/").text)
+    _, page = _ask_and_get_query_id(c, token)
+    assert "Not in the materials" in page
+    assert "Sources" not in page
+    assert "⧉ copy" not in page
+    assert "it can make mistakes" in page
+
+
+def test_thumbs_hidden_when_log_query_fails(monkeypatch, tmp_path, caplog):
+    c = _client(monkeypatch, tmp_path)
+    _login(c)
+    token = _csrf(c.get("/").text)
+    ds = c.app.state.datastore
+
+    def boom(**kwargs):
+        raise RuntimeError("db down")
+
+    ds.log_query = boom
+    with caplog.at_level(logging.ERROR):
+        qid, page = _ask_and_get_query_id(c, token)
+    assert qid is None
+    assert "👍" not in page
 
 
 def test_feedback_write_failure_does_not_500(monkeypatch, tmp_path, caplog):

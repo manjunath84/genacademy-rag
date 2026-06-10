@@ -999,7 +999,7 @@ git commit -m "feat: serve stored uploads at /documents/{doc_id}/file"
 - Modify: `src/genacademy_rag/web/app.py` (`ask` view `:153-180`, import)
 - Modify: `tests/web/test_app.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/web/test_app.py` (and remove the Task-7 `xfail` marker from the
 feedback happy-path test):
@@ -1046,12 +1046,12 @@ def test_thumbs_hidden_when_log_query_fails(monkeypatch, tmp_path, caplog):
     assert "👍" not in page     # thumbs not rendered
 ```
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `uv run pytest tests/web/test_app.py -v -k "answer_card or refused_card or thumbs_hidden or feedback_happy"`
 Expected: FAIL (old template has none of these elements)
 
-- [ ] **Step 3: Update the `ask` view**
+- [x] **Step 3: Update the `ask` view**
 
 In `src/genacademy_rag/web/app.py` add the import:
 
@@ -1099,7 +1099,7 @@ defined:
         )
 ```
 
-- [ ] **Step 4: Rewrite the template**
+- [x] **Step 4: Rewrite the template**
 
 Replace `src/genacademy_rag/web/templates/chat.html` entirely:
 
@@ -1194,12 +1194,12 @@ Replace `src/genacademy_rag/web/templates/chat.html` entirely:
 </div></body></html>
 ```
 
-- [ ] **Step 5: Run the full web suite**
+- [x] **Step 5: Run the full web suite**
 
 Run: `uv run pytest tests/web -v`
 Expected: all PASS (including the un-xfailed feedback happy path)
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/genacademy_rag/web/templates/chat.html src/genacademy_rag/web/app.py tests/web/test_app.py
