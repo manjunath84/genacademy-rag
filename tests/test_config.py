@@ -55,6 +55,32 @@ def test_vectorstore_defaults_to_chroma_with_empty_pinecone_settings(monkeypatch
     assert s.pinecone_region == "us-east-1"
 
 
+def test_unknown_vectorstore_rejected_eagerly(monkeypatch):
+    monkeypatch.setenv("GENACADEMY_VECTORSTORE", "faiss")
+    try:
+        Settings.from_env()
+    except ValueError as exc:
+        assert "GENACADEMY_VECTORSTORE" in str(exc)
+    else:
+        raise AssertionError("expected ValueError")
+
+
+def test_env_bool_rejects_unrecognized_values(monkeypatch):
+    # Silent coercion to False would flip default-True safety flags permissive.
+    monkeypatch.setenv("GENACADEMY_RERANK_LOCAL_FILES_ONLY", "enabled")
+    try:
+        Settings.from_env()
+    except ValueError as exc:
+        assert "GENACADEMY_RERANK_LOCAL_FILES_ONLY" in str(exc)
+    else:
+        raise AssertionError("expected ValueError")
+
+
+def test_env_bool_accepts_explicit_falsy_values(monkeypatch):
+    monkeypatch.setenv("GENACADEMY_RERANK_LOCAL_FILES_ONLY", "off")
+    assert Settings.from_env().rerank_local_files_only is False
+
+
 def test_vectorstore_env_settings_parse(monkeypatch):
     monkeypatch.setenv("GENACADEMY_VECTORSTORE", "pinecone")
     monkeypatch.setenv("PINECONE_API_KEY", "pk-test")

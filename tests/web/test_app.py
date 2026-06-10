@@ -380,6 +380,9 @@ def test_delete_route_removes_serving_doc_and_leaves_eval_pristine(monkeypatch, 
         def retrieve(self, q):
             return []
 
+        def snapshot_chunks(self):
+            return []
+
         def mutate_corpus(self, mutation):
             reindexed.append(mutation())
 
@@ -421,9 +424,9 @@ def test_delete_route_removes_serving_doc_and_leaves_eval_pristine(monkeypatch, 
     assert datastore.get_document("pdf/abc")["status"] == "deleted"
 
 
-def test_delete_route_filters_deleted_doc_from_stale_store_read(monkeypatch, tmp_path):
-    """An eventually-consistent store (Pinecone) can still return the just-deleted doc's
-    chunks from get_all_chunks; the rebuilt in-memory corpus must exclude them anyway."""
+def test_delete_route_filters_deleted_doc_from_snapshot(monkeypatch, tmp_path):
+    """The delete mutation rebuilds from the in-memory snapshot (never a remote read,
+    which could lag on Pinecone); the deleted doc must be filtered out of it."""
     from genacademy_rag.core.types import Chunk, Citation
     from genacademy_rag.data.datastore import SQLiteDatastore
     from genacademy_rag.web.app import create_app
@@ -438,21 +441,26 @@ def test_delete_route_filters_deleted_doc_from_stale_store_read(monkeypatch, tmp
         return Chunk(chunk_id=f"{doc_id}::{ordinal}", doc_id=doc_id, ordinal=ordinal,
                      text="t", citation=cit)
 
-    stale_chunks = [_chunk("pdf/abc", 0), _chunk("pdf/keep", 0)]
+    snapshot = [_chunk("pdf/abc", 0), _chunk("pdf/keep", 0)]
+    store_reads = []
 
     class _Retriever:
         def retrieve(self, q):
             return []
+
+        def snapshot_chunks(self):
+            return list(snapshot)
 
         def mutate_corpus(self, mutation):
             rebuilt.append(mutation())
 
     class _StaleServing:
         def delete_doc(self, doc_id):
-            pass                       # lagging remote: chunks still visible below
+            pass                       # lagging remote: vectors may be orphaned
 
         def get_all_chunks(self):
-            return list(stale_chunks)  # still contains the deleted doc
+            store_reads.append(True)   # must NOT be consulted on delete
+            return list(snapshot)
 
     datastore.add_document(
         doc_id="pdf/abc",
@@ -479,6 +487,66 @@ def test_delete_route_filters_deleted_doc_from_stale_store_read(monkeypatch, tmp
     )
     assert r.status_code == 303
     assert [ch.chunk_id for ch in rebuilt[0]] == ["pdf/keep::0"]
+    assert store_reads == []           # snapshot-based: no remote read on delete
+
+
+def test_reindex_route_filters_deleted_docs_via_datastore_ledger(monkeypatch, tmp_path):
+    """Reindex is the one deliberate remote re-read. Orphaned vectors from a lagged
+    delete (still returned by get_all_chunks) must not resurrect a deleted doc —
+    the datastore's deletion ledger is authoritative."""
+    from genacademy_rag.core.types import Chunk, Citation
+    from genacademy_rag.data.datastore import SQLiteDatastore
+    from genacademy_rag.web.app import create_app
+    from tests.conftest import FakeModelProvider
+
+    monkeypatch.setenv("GENACADEMY_SESSION_SECRET", "test-secret")
+    datastore = SQLiteDatastore(tmp_path / "t.sqlite")
+    rebuilt = []
+
+    def _chunk(doc_id, ordinal):
+        cit = Citation(doc_id=doc_id, title=doc_id, source_type="pdf")
+        return Chunk(chunk_id=f"{doc_id}::{ordinal}", doc_id=doc_id, ordinal=ordinal,
+                     text="t", citation=cit)
+
+    class _Retriever:
+        def retrieve(self, q):
+            return []
+
+        def snapshot_chunks(self):
+            return []
+
+        def mutate_corpus(self, mutation):
+            rebuilt.append(mutation())
+
+    class _OrphanedServing:
+        def get_all_chunks(self):
+            # Remote still holds the deleted doc's vectors (lagged delete) plus a
+            # live doc and an eval-seed doc that has no datastore row.
+            return [_chunk("pdf/gone", 0), _chunk("pdf/live", 0), _chunk("course/seed", 0)]
+
+    for doc_id, title in (("pdf/gone", "gone.pdf"), ("pdf/live", "live.pdf")):
+        datastore.add_document(
+            doc_id=doc_id, title=title, source_type="pdf", filename=title,
+            uploaded_by="admin@genacademy.local", n_chunks=1,
+        )
+    datastore.delete_document("pdf/gone", deleted_by="admin@genacademy.local")
+
+    app = create_app(
+        retriever=_Retriever(),
+        provider=FakeModelProvider(),
+        datastore=datastore,
+        serving_store=_OrphanedServing(),
+        uploads_dir=tmp_path / "uploads",
+    )
+    c = TestClient(app)
+    _login(c, "admin@genacademy.local", "admin")
+    token = _csrf(c.get("/admin/documents").text)
+    r = c.post("/admin/documents/reindex", data={"csrf_token": token},
+               follow_redirects=False)
+
+    assert r.status_code == 303
+    # Deleted doc filtered; live doc and ledger-less seed doc kept.
+    assert [ch.chunk_id for ch in rebuilt[0]] == ["pdf/live::0", "course/seed::0"]
 
 
 def test_delete_route_treats_empty_uploaded_by_as_undeletable(monkeypatch, tmp_path):
@@ -661,6 +729,7 @@ def test_default_upload_embeds_before_corpus_mutation_lock(monkeypatch, tmp_path
             rerank_pool=0,
         ):
             self.store = store
+            self.all_chunks = list(all_chunks)
             self.candidate_k = candidate_k
             self.reranker = reranker
             self.rerank_pool = rerank_pool
@@ -668,10 +737,13 @@ def test_default_upload_embeds_before_corpus_mutation_lock(monkeypatch, tmp_path
         def retrieve(self, query):
             return []
 
+        def snapshot_chunks(self):
+            return list(self.all_chunks)
+
         def mutate_corpus(self, mutation):
             state["in_lock"] = True
             try:
-                mutation()
+                self.all_chunks = mutation()
             finally:
                 state["in_lock"] = False
 
@@ -707,6 +779,173 @@ def test_default_upload_embeds_before_corpus_mutation_lock(monkeypatch, tmp_path
     assert r.status_code == 303
     assert state["embed_in_lock"] == [False]
     assert state["upsert_in_lock"] == [True]
+
+
+def _default_app_scaffold(monkeypatch, tmp_path, *, store_cls, retriever_cls):
+    """Shared monkeypatching for build_default_app tests with injected fakes."""
+    import genacademy_rag.config as config_module
+    import genacademy_rag.core.providers as providers_module
+    import genacademy_rag.core.retriever as retriever_module
+    import genacademy_rag.core.vectorstore as vectorstore_module
+    from genacademy_rag.config import Settings
+
+    settings = Settings(
+        provider="openrouter",
+        gen_base_url="",
+        gen_api_key="",
+        gen_model="",
+        embed_model="",
+        top_k=5,
+        chunk_size=50,
+        chunk_overlap=5,
+        chunker="fixed",
+        section_chunk_max_chars=1500,
+        section_chunk_overlap=150,
+        chroma_dir=tmp_path / "chroma",
+        sqlite_path=tmp_path / "t.sqlite",
+        session_secret="test-secret",
+        rerank_enabled=False,
+        rerank_model="cross-encoder/ms-marco-MiniLM-L6-v2",
+        rerank_local_files_only=True,
+        rerank_batch_size=32,
+        rerank_pool=0,
+        rerank_device=None,
+        rerank_cache_dir=None,
+    )
+
+    class _Provider:
+        def embed(self, texts):
+            return [[0.1] * 384 for _ in texts]
+
+        def generate(self, messages, *, json_mode=False, max_tokens=512, temperature=0.0):
+            return '{"answerable": true, "confidence": 5}' if json_mode else "answer"
+
+    monkeypatch.setattr(Settings, "from_env", classmethod(lambda cls: settings))
+    monkeypatch.setattr(config_module, "DATA_DIR", tmp_path / "data")
+    monkeypatch.setattr(providers_module, "build_provider", lambda s: _Provider())
+    monkeypatch.setattr(vectorstore_module, "ChromaStore", store_cls)
+    monkeypatch.setattr(retriever_module, "HybridRetriever", retriever_cls)
+
+
+def _corpus_chunk(doc_id, ordinal, text="t"):
+    from genacademy_rag.core.types import Chunk, Citation
+
+    cit = Citation(doc_id=doc_id, title=doc_id, source_type="github")
+    return Chunk(chunk_id=f"{doc_id}::{ordinal}", doc_id=doc_id, ordinal=ordinal,
+                 text=text, citation=cit)
+
+
+def test_default_boot_seeds_index_from_local_chunks_not_lagging_store_read(
+    monkeypatch, tmp_path
+):
+    """First boot against an eventually-consistent store: the seed upsert is not yet
+    visible to get_all_chunks, and the retriever must be built from the local seed
+    list — not the lagging (empty) remote read."""
+    from genacademy_rag.web.app import build_default_app
+
+    eval_chunks = [_corpus_chunk("course/readme", 0, "retrieval augmented generation")]
+    built = {}
+
+    class _Store:
+        def __init__(self, *, persist_dir, collection):
+            self.collection = collection
+
+        def get_all_chunks(self):
+            # eval collection is local and consistent; serving lags and reads empty.
+            return list(eval_chunks) if self.collection == "eval" else []
+
+        def upsert(self, chunks, embeddings):
+            pass
+
+    class _Retriever:
+        def __init__(self, *, store, provider, all_chunks, top_k, candidate_k=20,
+                     reranker=None, rerank_pool=0):
+            built["all_chunks"] = list(all_chunks)
+
+        def retrieve(self, query):
+            return []
+
+        def snapshot_chunks(self):
+            return built["all_chunks"]
+
+        def mutate_corpus(self, mutation):
+            mutation()
+
+    _default_app_scaffold(monkeypatch, tmp_path, store_cls=_Store, retriever_cls=_Retriever)
+    build_default_app()
+
+    assert [c.chunk_id for c in built["all_chunks"]] == ["course/readme::0"]
+
+
+def test_default_upload_unions_committed_chunks_despite_stale_store_read(
+    monkeypatch, tmp_path
+):
+    """The upload mutation must rebuild the corpus from the in-memory snapshot plus the
+    just-committed chunks. A stale store read (missing the new chunks, e.g. Pinecone
+    lag) must not make the upload unsearchable — and must not evict prior corpus."""
+    import genacademy_rag.core.loaders.pdf_loader as pdf_loader
+    from genacademy_rag.core.types import Document
+    from genacademy_rag.web.app import build_default_app
+
+    existing = _corpus_chunk("course/readme", 0, "prior corpus chunk")
+    rebuilt = {}
+
+    class _StaleStore:
+        def __init__(self, *, persist_dir, collection):
+            self.collection = collection
+
+        def get_all_chunks(self):
+            # Always stale: never reflects any upsert (boot sees the prior corpus).
+            return [existing]
+
+        def upsert(self, chunks, embeddings):
+            pass
+
+    class _Retriever:
+        def __init__(self, *, store, provider, all_chunks, top_k, candidate_k=20,
+                     reranker=None, rerank_pool=0):
+            self.all_chunks = list(all_chunks)
+
+        def retrieve(self, query):
+            return []
+
+        def snapshot_chunks(self):
+            return list(self.all_chunks)
+
+        def mutate_corpus(self, mutation):
+            self.all_chunks = mutation()
+            rebuilt["corpus"] = self.all_chunks
+
+    def fake_load_pdf_bytes(*, filename, raw_bytes, uploaded_by=None, stored_path=None):
+        return Document(
+            doc_id="pdf/abc",
+            title=filename,
+            source_type="pdf",
+            text="Gen Academy upload about retrieval augmented generation.",
+            filename=filename,
+            uploaded_by=uploaded_by,
+            stored_path=stored_path,
+        )
+
+    _default_app_scaffold(monkeypatch, tmp_path, store_cls=_StaleStore,
+                          retriever_cls=_Retriever)
+    monkeypatch.setattr(pdf_loader, "load_pdf_bytes", fake_load_pdf_bytes)
+
+    c = TestClient(build_default_app())
+    _login(c, "admin@genacademy.local", "admin")
+    page = c.get("/admin/documents")
+    r = c.post(
+        "/upload",
+        data={"csrf_token": _csrf(page.text)},
+        files={"file": ("test.pdf", b"%PDF-1.4", "application/pdf")},
+        follow_redirects=False,
+    )
+
+    assert r.status_code == 303
+    corpus_ids = [c2.chunk_id for c2 in rebuilt["corpus"]]
+    assert "course/readme::0" in corpus_ids          # prior corpus retained
+    assert any(cid.startswith("pdf/abc::") for cid in corpus_ids)  # upload searchable
+    assert len(corpus_ids) == len(set(corpus_ids))   # no duplicates
 
 
 def test_dashboard_renders_usage_summary(monkeypatch, tmp_path):

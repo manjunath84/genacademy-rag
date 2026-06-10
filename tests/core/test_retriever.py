@@ -233,6 +233,24 @@ def test_reranked_bm25_only_hit_keeps_zero_cosine_score(fake_provider):
     assert result.score == 0.0
 
 
+def test_snapshot_chunks_reflects_current_corpus_and_works_inside_mutation(fake_provider):
+    c0, c1 = _chunk(0, "alpha text"), _chunk(1, "beta text")
+    retr = HybridRetriever(store=_DenseStore([]), provider=fake_provider,
+                           all_chunks=[c0], top_k=5)
+
+    assert [c.chunk_id for c in retr.snapshot_chunks()] == ["d1::0"]
+
+    # Callable from inside a mutation (lock held) without deadlock — the app's
+    # upload/delete mutations rebuild the corpus from this snapshot.
+    def mutation():
+        current = retr.snapshot_chunks()
+        return [*current, c1]
+
+    retr.mutate_corpus(mutation)
+
+    assert [c.chunk_id for c in retr.snapshot_chunks()] == ["d1::0", "d1::1"]
+
+
 def test_reindex_uses_single_snapshot_not_torn_fields(fake_provider):
     old = _chunk(0, "old retrieval text")
     new = _chunk(1, "new Pinecone text")

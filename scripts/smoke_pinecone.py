@@ -1,6 +1,9 @@
 """Live smoke for the Pinecone preset (the "Chroma -> Pinecone, one config line" demo check).
-Requires PINECONE_API_KEY. Writes ONLY to a throwaway `smoke-test` namespace and deletes its
-doc afterwards. Not part of the deterministic eval — that always runs on local Chroma."""
+Requires PINECONE_API_KEY. Constructing the store auto-creates the index if missing (an
+account-level write); vector writes are confined to a throwaway `smoke-test` namespace and the
+smoke doc is deleted in a finally block. Not part of the deterministic eval — that always runs
+on local Chroma. Run this after any `pinecone` pin bump: the offline fakes assume the pinned
+SDK's response shapes, and only this script exercises the real ones."""
 import time
 
 from genacademy_rag.config import Settings
@@ -31,25 +34,31 @@ def main():
     ]
     store.upsert(chunks, embedder.embed([c.text for c in chunks]))
 
-    qvec = embedder.embed(["retrieval augmented generation"])[0]
-    results: list[tuple[str, float]] = []
-    deadline = time.time() + 60
-    while time.time() < deadline:           # serverless upserts are eventually consistent
-        results = store.query(qvec, top_k=2)
-        if len(results) == 2:
-            break
-        time.sleep(3)
-    assert results and results[0][0] == "smoke::0", f"unexpected query result: {results}"
-    assert results[0][1] > results[1][1], "similarity must be descending"
+    try:
+        qvec = embedder.embed(["retrieval augmented generation"])[0]
+        results: list[tuple[str, float]] = []
+        deadline = time.time() + 60
+        while time.time() < deadline:       # serverless upserts are eventually consistent
+            results = store.query(qvec, top_k=2)
+            if len(results) == 2:
+                break
+            time.sleep(3)
+        if len(results) < 2:
+            raise SystemExit(
+                f"timed out after 60s waiting for both vectors to be queryable; got {results}"
+            )
+        assert results[0][0] == "smoke::0", f"unexpected query result: {results}"
+        assert results[0][1] > results[1][1], "similarity must be descending"
 
-    got = store.get_chunk("smoke::0")
-    assert got.text == "retrieval augmented generation"
-    assert got.citation.commit_hash == "deadbeef"
-    assert isinstance(got.citation.line_start, int)      # float->int coercion on read
+        got = store.get_chunk("smoke::0")
+        assert got.text == "retrieval augmented generation"
+        assert got.citation.commit_hash == "deadbeef"
+        assert isinstance(got.citation.line_start, int)  # float->int coercion on read
 
-    all_ids = [c.chunk_id for c in store.get_all_chunks()]
-    assert all_ids == ["smoke::0", "smoke::1"], all_ids   # (doc_id, ordinal) sort, both present
-    store.delete_doc("smoke")
+        all_ids = [c.chunk_id for c in store.get_all_chunks()]
+        assert all_ids == ["smoke::0", "smoke::1"], all_ids  # (doc_id, ordinal) sort
+    finally:
+        store.delete_doc("smoke")           # clean up even when an assertion fails
     print(
         f"PINECONE SMOKE OK  index={s.pinecone_index} namespace={NAMESPACE} "
         f"top=({results[0][0]}, {results[0][1]:.3f}) chunks_seen={len(all_ids)}"

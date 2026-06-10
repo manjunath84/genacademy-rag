@@ -41,12 +41,17 @@ next PR"); the plan is committed as the audit artifact rather than gated.
 
 ## Known limitations (reviewed and accepted for this slice)
 
-- **Eventual consistency:** Pinecone serverless reads lag writes. The web app therefore builds
-  its in-memory corpus from locally known chunks after every mutation (boot seed uses the local
-  seed list; upload unions the committed chunks; delete filters the doc out), so search
-  correctness never depends on read-your-writes. Orphaned remote vectors after a lagged delete
-  cannot be served (the retriever drops unknown ids) but can reappear after an admin reindex
-  within the lag window — reindex twice or wait if that happens.
+- **Eventual consistency:** Pinecone serverless reads lag writes. After the post-merge review
+  hardening, the web app derives its in-memory corpus from the retriever's snapshot plus local
+  deltas on every mutation (boot seeds from the local seed list; upload unions the committed
+  chunks into the snapshot; delete filters the snapshot) — no mutation path performs a remote
+  re-read, so search correctness does not depend on remote reads having caught up with any
+  mutation, its own or earlier ones. The admin reindex is the one deliberate remote re-read
+  (recovery path for chunks missing from memory); it is filtered against the datastore's
+  deletion ledger so orphaned vectors from a lagged delete can never resurrect a deleted doc,
+  and it logs the corpus-size change. A reindex during a lag window can still shrink the corpus
+  (partial remote read — `get_all_chunks` logs a warning when fetch returns fewer vectors than
+  listed); reindex again once the store converges.
 - **Corpus lock holds network I/O:** with Pinecone, upload/delete/reindex mutations perform
   remote calls inside the retriever's corpus lock, blocking concurrent questions for the call's
   duration. Acceptable for a single-admin demo app; a lock-free snapshot swap is the future fix
