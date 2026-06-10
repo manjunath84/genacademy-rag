@@ -1283,7 +1283,7 @@ git commit -m "feat: feedback counts on admin dashboard"
 **Files:**
 - Modify: `eval/REPORT.md` (regenerated)
 
-- [ ] **Step 1: Full lint + test gate**
+- [x] **Step 1: Full lint + test gate**
 
 ```bash
 uv run ruff check .
@@ -1291,7 +1291,7 @@ uv run pytest
 ```
 Expected: ruff clean; all tests pass (none skipped except `@pytest.mark.integration` without keys).
 
-- [ ] **Step 2: Re-run the eval on the Nebius preset**
+- [x] **Step 2: Re-run the eval on the Nebius preset**
 
 The `ANSWER_SYSTEM` change affects generated answers, so the faithfulness score must be
 re-measured (spec §5; roadmap: any regenerated report runs on Nebius). Requires
@@ -1305,13 +1305,13 @@ Expected: `eval/REPORT.md` regenerated. Retrieval metrics (recall/precision/MRR)
 **identical** to the previous run — nothing in this slice touches retrieval; any drift
 is a regression, stop and investigate.
 
-- [ ] **Step 3: Record the before/after faithfulness delta**
+- [x] **Step 3: Record the before/after faithfulness delta**
 
 In `eval/REPORT.md` (or its changelog section if the generator preserves one), note:
 faithfulness before (58%, terse-answer prompt) vs after (new overview prompt), judge
 model used, and that retrieval metrics are unchanged by construction.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add eval/REPORT.md
