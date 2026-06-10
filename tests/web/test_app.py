@@ -421,6 +421,66 @@ def test_delete_route_removes_serving_doc_and_leaves_eval_pristine(monkeypatch, 
     assert datastore.get_document("pdf/abc")["status"] == "deleted"
 
 
+def test_delete_route_filters_deleted_doc_from_stale_store_read(monkeypatch, tmp_path):
+    """An eventually-consistent store (Pinecone) can still return the just-deleted doc's
+    chunks from get_all_chunks; the rebuilt in-memory corpus must exclude them anyway."""
+    from genacademy_rag.core.types import Chunk, Citation
+    from genacademy_rag.data.datastore import SQLiteDatastore
+    from genacademy_rag.web.app import create_app
+    from tests.conftest import FakeModelProvider
+
+    monkeypatch.setenv("GENACADEMY_SESSION_SECRET", "test-secret")
+    datastore = SQLiteDatastore(tmp_path / "t.sqlite")
+    rebuilt = []
+
+    def _chunk(doc_id, ordinal):
+        cit = Citation(doc_id=doc_id, title=doc_id, source_type="pdf")
+        return Chunk(chunk_id=f"{doc_id}::{ordinal}", doc_id=doc_id, ordinal=ordinal,
+                     text="t", citation=cit)
+
+    stale_chunks = [_chunk("pdf/abc", 0), _chunk("pdf/keep", 0)]
+
+    class _Retriever:
+        def retrieve(self, q):
+            return []
+
+        def mutate_corpus(self, mutation):
+            rebuilt.append(mutation())
+
+    class _StaleServing:
+        def delete_doc(self, doc_id):
+            pass                       # lagging remote: chunks still visible below
+
+        def get_all_chunks(self):
+            return list(stale_chunks)  # still contains the deleted doc
+
+    datastore.add_document(
+        doc_id="pdf/abc",
+        title="notes.pdf",
+        source_type="pdf",
+        filename="notes.pdf",
+        uploaded_by="admin@genacademy.local",
+        n_chunks=1,
+    )
+    app = create_app(
+        retriever=_Retriever(),
+        provider=FakeModelProvider(),
+        datastore=datastore,
+        serving_store=_StaleServing(),
+        uploads_dir=tmp_path / "uploads",
+    )
+    c = TestClient(app)
+    _login(c, "admin@genacademy.local", "admin")
+    token = _csrf(c.get("/admin/documents").text)
+    r = c.post(
+        "/admin/documents/delete",
+        data={"doc_id": "pdf/abc", "csrf_token": token},
+        follow_redirects=False,
+    )
+    assert r.status_code == 303
+    assert [ch.chunk_id for ch in rebuilt[0]] == ["pdf/keep::0"]
+
+
 def test_delete_route_treats_empty_uploaded_by_as_undeletable(monkeypatch, tmp_path):
     from genacademy_rag.data.datastore import SQLiteDatastore
     from genacademy_rag.web.app import create_app

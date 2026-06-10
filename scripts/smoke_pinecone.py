@@ -47,11 +47,12 @@ def main():
     assert got.citation.commit_hash == "deadbeef"
     assert isinstance(got.citation.line_start, int)      # float->int coercion on read
 
-    n_seen = len(store.get_all_chunks())
+    all_ids = [c.chunk_id for c in store.get_all_chunks()]
+    assert all_ids == ["smoke::0", "smoke::1"], all_ids   # (doc_id, ordinal) sort, both present
     store.delete_doc("smoke")
     print(
         f"PINECONE SMOKE OK  index={s.pinecone_index} namespace={NAMESPACE} "
-        f"top=({results[0][0]}, {results[0][1]:.3f}) chunks_seen={n_seen}"
+        f"top=({results[0][0]}, {results[0][1]:.3f}) chunks_seen={len(all_ids)}"
     )
 
 

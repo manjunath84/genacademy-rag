@@ -209,6 +209,26 @@ def test_pinecone_get_all_chunks_paginates_and_sorts_by_doc_and_ordinal():
     assert [c.chunk_id for c in got] == ["d1::0", "d1::1", "d1::2", "d1::10"]
 
 
+def test_pinecone_get_chunk_missing_id_raises_clear_keyerror():
+    store, _client = _pinecone_store()
+
+    with pytest.raises(KeyError, match="serving.*d1::404"):
+        store.get_chunk("d1::404")
+
+
+def test_pinecone_delete_doc_batches_at_api_cap():
+    store, client = _pinecone_store()
+    # Populate 1001 ids directly; the API caps delete at 1000 ids per request.
+    for i in range(1001):
+        client.index.vectors[f"d1::{i}"] = {"values": [], "metadata": {}}
+
+    store.delete_doc("d1")
+
+    delete_calls = [c for c in client.index.calls if c[0] == "delete"]
+    assert [len(c[1]) for c in delete_calls] == [1000, 1]
+    assert client.index.vectors == {}
+
+
 def test_pinecone_delete_doc_lists_by_id_prefix_then_deletes():
     store, client = _pinecone_store()
     other_cit = Citation(doc_id="d2", title="o", source_type="pdf")

@@ -39,6 +39,21 @@ next PR"); the plan is committed as the audit artifact rather than gated.
 - **Tests are offline:** a fake Pinecone client/index records calls; no real SDK network calls.
   Live smoke against a real index is a documented manual step once a key exists.
 
+## Known limitations (reviewed and accepted for this slice)
+
+- **Eventual consistency:** Pinecone serverless reads lag writes. The web app therefore builds
+  its in-memory corpus from locally known chunks after every mutation (boot seed uses the local
+  seed list; upload unions the committed chunks; delete filters the doc out), so search
+  correctness never depends on read-your-writes. Orphaned remote vectors after a lagged delete
+  cannot be served (the retriever drops unknown ids) but can reappear after an admin reindex
+  within the lag window — reindex twice or wait if that happens.
+- **Corpus lock holds network I/O:** with Pinecone, upload/delete/reindex mutations perform
+  remote calls inside the retriever's corpus lock, blocking concurrent questions for the call's
+  duration. Acceptable for a single-admin demo app; a lock-free snapshot swap is the future fix
+  if this preset ever serves real traffic.
+- **Single-process assumption:** index auto-creation does not guard the two-workers-boot race
+  (both pass `has_index`, second `create_index` conflicts). The app runs single-process.
+
 ## Tasks
 
 1. Settings + tests (`tests/test_config.py`).

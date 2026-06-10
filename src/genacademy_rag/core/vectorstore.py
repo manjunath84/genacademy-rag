@@ -82,13 +82,19 @@ EMBED_DIM = 384
 _INT_META_FIELDS = ("ordinal", "line_start", "line_end", "char_start", "char_end")
 
 _PINECONE_BATCH = 100
+_PINECONE_DELETE_BATCH = 1000   # API cap: at most 1000 ids per delete request
 
 
 class PineconeStore:
     """Serverless Pinecone index behind the VectorStore Protocol. Chunk text and citation live in
-    vector metadata (Pinecone rejects None values; Citation.to_metadata already strips them).
+    vector metadata (Pinecone rejects None values; Citation.to_metadata already strips them; the
+    ~40KB-per-vector metadata cap comfortably fits the project's <=1500-char chunks).
     `collection` maps to a Pinecone namespace. delete_doc lists ids by `{doc_id}::` prefix because
-    serverless indexes do not support metadata-filtered deletes."""
+    serverless indexes do not support metadata-filtered deletes.
+
+    Consistency caveat: serverless reads (query/fetch/list) lag writes by seconds. Callers must
+    not assume read-your-writes — the web app builds its in-memory corpus from locally known
+    chunks after each mutation, and the admin reindex re-read is the recovery path."""
 
     def __init__(self, *, api_key: str, index_name: str, namespace: str = "",
                  dimension: int = EMBED_DIM, cloud: str = "aws", region: str = "us-east-1",
@@ -135,6 +141,10 @@ class PineconeStore:
 
     def get_chunk(self, chunk_id: str) -> Chunk:
         res = self._index.fetch(ids=[chunk_id], namespace=self._namespace)
+        if chunk_id not in res.vectors:
+            raise KeyError(
+                f"chunk not found in Pinecone namespace {self._namespace!r}: {chunk_id}"
+            )
         return self._chunk_from_metadata(chunk_id, res.vectors[chunk_id].metadata)
 
     def get_all_chunks(self) -> list[Chunk]:
@@ -152,8 +162,8 @@ class PineconeStore:
         ids = [item.id for page in self._index.list(prefix=f"{doc_id}::",
                                                     namespace=self._namespace)
                for item in page.vectors]
-        if ids:
-            self._index.delete(ids=ids, namespace=self._namespace)
+        for i in range(0, len(ids), _PINECONE_DELETE_BATCH):
+            self._index.delete(ids=ids[i:i + _PINECONE_DELETE_BATCH], namespace=self._namespace)
 
 
 def build_vectorstore(settings, *, collection: str) -> VectorStore:
@@ -169,6 +179,9 @@ def build_vectorstore(settings, *, collection: str) -> VectorStore:
             api_key=settings.pinecone_api_key,
             index_name=settings.pinecone_index,
             namespace=collection,
+            # Pinned to the all-MiniLM-L6-v2 dimension. A different GENACADEMY_EMBED_MODEL
+            # needs an index whose dimension matches, or every upsert/query fails remotely.
+            dimension=EMBED_DIM,
             cloud=settings.pinecone_cloud,
             region=settings.pinecone_region,
         )
