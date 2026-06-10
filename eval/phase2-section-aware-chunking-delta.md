@@ -12,8 +12,8 @@
 
 | Run | recall@k | precision@k | MRR | mean retrieval ms | p50 retrieval ms | p95 retrieval ms |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| fixed baseline | 0.67 | 0.22 | 0.55 | 90.918 | 83.546 | 360.648 |
-| section-aware | 0.64 | 0.18 | 0.34 | 80.084 | 80.474 | 228.895 |
+| fixed baseline | 0.67 | 0.22 | 0.55 | 301.555 | 88.417 | 1387.725 |
+| section-aware | 0.64 | 0.18 | 0.34 | 59.975 | 52.732 | 217.876 |
 
 ## Corpus Shape
 
@@ -23,9 +23,9 @@
 | section-aware | eval_section | section | 73 |
 
 Section-aware chunking produced more, smaller heading-bounded chunks after enforcing heading
-boundaries. Latency was lower in this run, but with 12 scored queries the latency columns are
-noise-dominated — treat them as not-regressed rather than improved. Recall, precision, and MRR
-all dropped.
+boundaries. Latency was lower in this run, but with 12 scored queries and separate Python processes
+for each eval command, the latency columns are warm-up/noise dominated. They should not be read as a
+quality win. Recall, precision, and MRR all dropped.
 
 ## Per-Question Movement
 
@@ -68,9 +68,10 @@ retrieval even though it is stored in the chunk text and citation span. Fixed ch
 stay under the cap. Some of the MRR drop may be embedder tail-truncation rather than the heading
 boundaries themselves; a follow-up run with `section_chunk_max_chars=1000` would separate the two.
 
-Mean retrieval latency fell from 90.918 ms to 80.084 ms and p95 fell from 360.648 ms to 228.895 ms,
-while p50 was effectively unchanged. With 12 queries these columns are noise-dominated; the honest
-latency claim is "not regressed," not "improved."
+Mean retrieval latency fell from 301.555 ms to 59.975 ms and p95 fell from 1387.725 ms to
+217.876 ms in this run, while p50 fell from 88.417 ms to 52.732 ms. With 12 queries and one process
+per eval command, these columns are dominated by model/query warm-up noise; the honest latency claim
+is "not the decision driver," not "improved."
 
 This is a 12-question retrieval-scored eval, so the results are directional rather than statistically
 strong. The honest conclusion is that strict heading-bounded chunking is easy to reason about but too
