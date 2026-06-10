@@ -58,3 +58,29 @@ class FixedSizeChunker:
                 break
             start += step
         return chunks
+
+
+class SectionAwareChunker:
+    def __init__(self, max_chars: int = 1500, overlap: int = 150):
+        if overlap >= max_chars:
+            raise ValueError("overlap must be < max_chars")
+        self.max_chars = max_chars
+        self.overlap = overlap
+
+    def chunk(self, doc: Document) -> list[Chunk]:
+        return FixedSizeChunker(self.max_chars, self.overlap).chunk(doc)
+
+
+def build_chunker(
+    kind: str,
+    *,
+    chunk_size: int,
+    chunk_overlap: int,
+    section_max_chars: int,
+    section_overlap: int,
+) -> Chunker:
+    if kind == "fixed":
+        return FixedSizeChunker(chunk_size, chunk_overlap)
+    if kind == "section":
+        return SectionAwareChunker(section_max_chars, section_overlap)
+    raise ValueError(f"unknown chunker {kind!r}; expected 'fixed' or 'section'")

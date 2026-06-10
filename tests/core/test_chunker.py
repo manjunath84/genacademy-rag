@@ -1,4 +1,4 @@
-from genacademy_rag.core.chunker import FixedSizeChunker
+from genacademy_rag.core.chunker import FixedSizeChunker, SectionAwareChunker, build_chunker
 from genacademy_rag.core.types import Document
 
 
@@ -55,3 +55,42 @@ def test_pdf_page_label_follows_chunk_start_across_a_boundary():
     assert chunks[0].text == "AAAA\fB"            # this chunk crosses the page boundary
     assert chunks[0].citation.page_or_section == "page 1"
     assert chunks[1].citation.page_or_section == "page 2"
+
+
+def test_build_chunker_returns_fixed_by_default():
+    chunker = build_chunker(
+        "fixed",
+        chunk_size=1000,
+        chunk_overlap=150,
+        section_max_chars=1500,
+        section_overlap=150,
+    )
+
+    assert isinstance(chunker, FixedSizeChunker)
+
+
+def test_build_chunker_returns_section_chunker():
+    chunker = build_chunker(
+        "section",
+        chunk_size=1000,
+        chunk_overlap=150,
+        section_max_chars=1500,
+        section_overlap=150,
+    )
+
+    assert isinstance(chunker, SectionAwareChunker)
+
+
+def test_build_chunker_rejects_unknown_name():
+    try:
+        build_chunker(
+            "semantic",
+            chunk_size=1000,
+            chunk_overlap=150,
+            section_max_chars=1500,
+            section_overlap=150,
+        )
+    except ValueError as exc:
+        assert "unknown chunker" in str(exc)
+    else:
+        raise AssertionError("expected ValueError")
