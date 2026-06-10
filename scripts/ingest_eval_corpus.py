@@ -39,6 +39,11 @@ def main():
     s = Settings.from_env()
     chunker_name = args.chunker or s.chunker
     sqlite_path = args.sqlite_path or s.sqlite_path
+    if args.collection == "eval" and chunker_name != "fixed":
+        raise SystemExit(
+            "refusing to ingest collection='eval' with chunker="
+            f"{chunker_name!r}; use --collection for alternate chunker experiments"
+        )
     if args.collection != "eval" and args.sqlite_path is None:
         sqlite_path = s.sqlite_path.with_name(f"{s.sqlite_path.stem}-{args.collection}.sqlite")
     if args.reset_collection:

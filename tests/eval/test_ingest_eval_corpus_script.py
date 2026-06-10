@@ -1,11 +1,13 @@
 import sys
 
+import pytest
+
 import scripts.ingest_eval_corpus as ingest_script
 from genacademy_rag.config import Settings
 from genacademy_rag.core.types import Document
 
 
-def _settings(tmp_path):
+def _settings(tmp_path, *, chunker="fixed"):
     return Settings(
         provider="openrouter",
         gen_base_url="https://openrouter.ai/api/v1",
@@ -15,7 +17,7 @@ def _settings(tmp_path):
         top_k=5,
         chunk_size=1000,
         chunk_overlap=150,
-        chunker="fixed",
+        chunker=chunker,
         section_chunk_max_chars=1500,
         section_chunk_overlap=150,
         chroma_dir=tmp_path / "chroma",
@@ -29,6 +31,35 @@ def _settings(tmp_path):
         rerank_device=None,
         rerank_cache_dir=None,
     )
+
+
+@pytest.mark.parametrize(
+    ("settings_chunker", "argv"),
+    [
+        ("section", ["ingest_eval_corpus.py"]),
+        ("fixed", ["ingest_eval_corpus.py", "--chunker", "section"]),
+    ],
+)
+def test_ingest_eval_refuses_non_fixed_chunker_for_baseline_collection(
+    monkeypatch,
+    tmp_path,
+    settings_chunker,
+    argv,
+):
+    settings = _settings(tmp_path, chunker=settings_chunker)
+
+    monkeypatch.setattr(ingest_script.Settings, "from_env", classmethod(lambda cls: settings))
+    monkeypatch.setattr(sys, "argv", argv)
+    monkeypatch.setattr(
+        ingest_script,
+        "build_provider",
+        lambda s: pytest.fail("baseline guard should run before provider construction"),
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        ingest_script.main()
+
+    assert "refusing to ingest collection='eval' with chunker='section'" in str(exc.value)
 
 
 def test_ingest_eval_defaults_to_eval_collection_fixed_chunker_and_primary_sqlite(
