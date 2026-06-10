@@ -1,7 +1,7 @@
 # GenAcademy RAG Minimal System Design Posture
 
 **Date:** 2026-06-10
-**Status:** review draft, documentation only
+**Status:** review incorporated (2026-06-10), documentation only
 **Audience:** GenAcademy Week 2 project reviewers and future maintainers
 
 ## Purpose
@@ -13,8 +13,9 @@ The project context is intentionally modest:
 
 - target users: GenAcademy cohort members
 - cohort size: about 200 people
-- cohort cadence: one cohort per month
-- corpus: course materials that grow over time
+- cohort cadence: one cohort every two months
+- corpus: a largely stable core of course materials, plus per-cohort additions (new Q&A /
+  chat-question docs and cohort-specific handouts)
 - priority: cited answers, honest refusal, reproducible eval, and clear extension seams
 
 The system should be easy to demonstrate today and credible to scale later. It should not add Week
@@ -75,7 +76,10 @@ For the next few cohorts, assume:
 - hundreds of users, not tens of thousands
 - low-to-moderate concurrency
 - repeated questions around assignments, tools, readings, and session logistics
-- monthly corpus growth as each cohort receives new materials
+- modest, additive corpus growth per two-month cohort: core materials stay largely stable, while
+  each cohort contributes new Q&A / chat-question docs and cohort-specific handouts (if cohort
+  answers should not bleed across cohorts, that is what eventually motivates the per-cohort
+  namespace strategy listed in the 10,000+ tier — not raw corpus size)
 - correctness and trust matter more than shaving every millisecond
 
 The system should optimize for:
@@ -128,11 +132,14 @@ Recommended policy:
 
 - keep `/data/` gitignored
 - never add these files to the deterministic eval corpus
-- ingest them only through production upload or a production corpus bootstrap path
+- ingest them only through the admin upload flow (the existing path) or a future production-corpus
+  bootstrap script (not yet implemented — the deploy bootstrap seeds only the pinned `eval`
+  collection)
 - keep the eval baseline pinned to GitHub commit SHAs
 - document which files were used in the demo corpus if they appear in the video
 
-Loader priority:
+Loader priority (today only the PDF loader is wired into upload; DOCX and PPTX loaders are not yet
+implemented):
 
 1. PDF support remains highest value because many course assets are PDFs.
 2. DOCX support is useful for handouts and chat-question docs.
@@ -188,17 +195,19 @@ Cost should be measured before adding cost infrastructure.
 
 ### 4. Deployment Readiness
 
-The active deploy plan is the right next slice:
+The Docker/Hugging Face Space deploy slice shipped in PR #9 (2026-06-10):
 
 - Docker packaging
 - Hugging Face Space metadata
 - first-boot corpus bootstrap
 - secure cookie setting
 - HTTP smoke script
-- deploy runbook
+- deploy runbook (`docs/deploy.md`)
 
 This gives a credible live demo path without requiring Postgres, Redis, queues, or multi-worker
-retriever state.
+retriever state. One operational caveat carries real weight at cohort scale: on a Hugging Face
+Space, `/data` persists only with paid persistent storage attached — without it, accounts, invites,
+usage logs, and uploads are wiped on every restart (see `docs/deploy.md` "Known Restrictions").
 
 ### 5. Evaluation As A Release Gate
 
@@ -211,7 +220,9 @@ Every retrieval-quality change should include:
 - failure interpretation
 - default-on or default-off recommendation
 
-This is already working well for rerank, section-aware chunking, Pinecone, and Nebius embeddings.
+This is already working well for rerank and section-aware chunking (before/after eval deltas in
+`eval/`). Pinecone and Nebius embeddings were validated through serving-path smoke checks instead —
+by design, since the deterministic eval is deliberately pinned to local Chroma and local embeddings.
 
 ## Minimal Constitution Addendum Proposal
 
@@ -222,7 +233,7 @@ Proposed addendum:
 ```markdown
 ## System Design Posture
 
-This project is scale-aware, not scale-overbuilt. Design for about 200 learners per monthly cohort
+This project is scale-aware, not scale-overbuilt. Design for about 200 learners per two-month cohort
 unless a new requirement changes that assumption.
 
 - Add infrastructure only when it protects the graded spine, improves demo reliability, or addresses a
@@ -248,6 +259,11 @@ Use:
 - usage dashboard for observability
 
 This is enough for the current course submission.
+
+One trigger in this tier is orthogonal to user count: **persistence across restarts on the deploy
+target**. A Hugging Face Space without paid persistent storage wipes `/data` (accounts, invites,
+usage logs, uploads) on every restart. That durability cliff — not reaching 1,000 users — is what
+first justifies attaching persistent storage or pulling the Postgres slice forward.
 
 ### 1,000 to 10,000 users
 
@@ -275,6 +291,13 @@ Consider:
 - model/cost routing if spend becomes material
 
 This should stay future-facing for now.
+
+Note: this growth path deliberately re-times one roadmap item — `specs/roadmap.md` Phase 2 lists a
+"Postgres preset" and `docs/design.md` says "SQLite (Phase 0) → Postgres (deploy)", while this
+posture defers Postgres until persistence or multi-instance needs justify it. Phase 2 items are
+each independently droppable, so this is allowed; if reviewers adopt this posture, reconcile the
+roadmap line (mark the Postgres preset deferred-by-posture) so the two documents do not silently
+disagree.
 
 ## Agentic RAG Decision
 
@@ -304,7 +327,9 @@ simpler retrieval, chunking, or prompting changes.
 
 ## Recommended Next Work
 
-1. Finish the Docker/Hugging Face Space deploy slice.
+1. ~~Finish the Docker/Hugging Face Space deploy slice.~~ Shipped (PR #9, 2026-06-10). Remaining
+   handout deliverables: demo video (≤5 min), project write-up doc, cohort form submission
+   (`specs/roadmap.md` cross-phase deliverables).
 2. Add the system-design addendum to project docs if reviewers agree.
 3. Use the new `data/` files only as a production/demo corpus, not eval data.
 4. Preserve current defaults:
