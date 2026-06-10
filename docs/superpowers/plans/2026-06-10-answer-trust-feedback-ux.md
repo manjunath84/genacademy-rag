@@ -183,7 +183,7 @@ git commit -m "feat: add pinned-commit github_url builder"
 - Modify: `src/genacademy_rag/core/sources.py`
 - Modify: `tests/core/test_sources.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/core/test_sources.py`:
 
@@ -259,12 +259,12 @@ def test_snippet_truncated_to_240_chars():
     assert len(views[0].snippet) == 240
 ```
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `uv run pytest tests/core/test_sources.py -v`
 Expected: FAIL — `ImportError: cannot import name 'SourceView'`
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 Append to `src/genacademy_rag/core/sources.py` (add `dataclass`/`replace` imports at top):
 
@@ -366,12 +366,12 @@ Note: deleted documents are removed from the search corpus on delete (see
 `delete_document` in `web/app.py`), so a tombstoned doc effectively never appears in
 `retrieved`; the `/documents/{doc_id}/file` route's 404 (Task 8) is the backstop.
 
-- [ ] **Step 4: Run to verify they pass**
+- [x] **Step 4: Run to verify they pass**
 
 Run: `uv run pytest tests/core/test_sources.py -v`
 Expected: 9 PASS
 
-- [ ] **Step 5: Lint and commit**
+- [x] **Step 5: Lint and commit**
 
 ```bash
 uv run ruff check src/genacademy_rag/core/sources.py tests/core/test_sources.py
