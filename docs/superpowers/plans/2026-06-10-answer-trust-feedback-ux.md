@@ -14,7 +14,7 @@
 
 ## Task 0: Branch
 
-- [ ] **Step 1: Create the feature branch**
+- [x] **Step 1: Create the feature branch**
 
 ```bash
 git checkout -b feat/answer-trust-feedback-ux
@@ -28,7 +28,7 @@ git checkout -b feat/answer-trust-feedback-ux
 - Create: `src/genacademy_rag/core/sources.py`
 - Create: `tests/core/test_sources.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/core/test_sources.py`:
 
@@ -45,12 +45,12 @@ def test_confidence_bucket_boundaries():
     assert confidence_bucket(5) == "high"
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `uv run pytest tests/core/test_sources.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'genacademy_rag.core.sources'`
 
-- [ ] **Step 3: Write the minimal implementation**
+- [x] **Step 3: Write the minimal implementation**
 
 Create `src/genacademy_rag/core/sources.py`:
 
@@ -76,12 +76,12 @@ def confidence_bucket(confidence: int) -> str:
     return "high"
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `uv run pytest tests/core/test_sources.py -v`
 Expected: 1 PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/genacademy_rag/core/sources.py tests/core/test_sources.py
