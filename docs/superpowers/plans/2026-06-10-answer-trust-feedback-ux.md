@@ -1325,7 +1325,7 @@ git commit -m "eval: re-measure faithfulness after overview-format prompt"
 **Files:**
 - Create: `docs/answer-ux-decisions-and-tradeoffs.md`
 
-- [ ] **Step 1: Write the decisions doc**
+- [x] **Step 1: Write the decisions doc**
 
 Create `docs/answer-ux-decisions-and-tradeoffs.md`:
 
