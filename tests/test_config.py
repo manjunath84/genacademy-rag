@@ -43,6 +43,9 @@ def test_vectorstore_defaults_to_chroma_with_empty_pinecone_settings(monkeypatch
         "GENACADEMY_PINECONE_INDEX",
         "GENACADEMY_PINECONE_CLOUD",
         "GENACADEMY_PINECONE_REGION",
+        "GENACADEMY_EMBEDDINGS",
+        "NEBIUS_EMBED_MODEL",
+        "GENACADEMY_EMBED_DIM",
     ):
         monkeypatch.delenv(name, raising=False)
 
@@ -53,6 +56,11 @@ def test_vectorstore_defaults_to_chroma_with_empty_pinecone_settings(monkeypatch
     assert s.pinecone_index == "genacademy-rag"
     assert s.pinecone_cloud == "aws"
     assert s.pinecone_region == "us-east-1"
+    assert s.embeddings == "local"
+    assert s.nebius_base_url == "https://api.studio.nebius.com/v1"
+    assert s.nebius_api_key == ""
+    assert s.nebius_embed_model == "Qwen/Qwen3-Embedding-8B"
+    assert s.embed_dim == 384
 
 
 def test_unknown_vectorstore_rejected_eagerly(monkeypatch):
@@ -61,6 +69,16 @@ def test_unknown_vectorstore_rejected_eagerly(monkeypatch):
         Settings.from_env()
     except ValueError as exc:
         assert "GENACADEMY_VECTORSTORE" in str(exc)
+    else:
+        raise AssertionError("expected ValueError")
+
+
+def test_unknown_embeddings_rejected_eagerly(monkeypatch):
+    monkeypatch.setenv("GENACADEMY_EMBEDDINGS", "cloud")
+    try:
+        Settings.from_env()
+    except ValueError as exc:
+        assert "GENACADEMY_EMBEDDINGS" in str(exc)
     else:
         raise AssertionError("expected ValueError")
 
@@ -87,6 +105,11 @@ def test_vectorstore_env_settings_parse(monkeypatch):
     monkeypatch.setenv("GENACADEMY_PINECONE_INDEX", "custom-index")
     monkeypatch.setenv("GENACADEMY_PINECONE_CLOUD", "gcp")
     monkeypatch.setenv("GENACADEMY_PINECONE_REGION", "us-central1")
+    monkeypatch.setenv("GENACADEMY_EMBEDDINGS", "nebius")
+    monkeypatch.setenv("NEBIUS_BASE_URL", "https://nebius.test/v1")
+    monkeypatch.setenv("NEBIUS_API_KEY", "neb-test")
+    monkeypatch.setenv("NEBIUS_EMBED_MODEL", "custom/embedder")
+    monkeypatch.setenv("GENACADEMY_EMBED_DIM", "4096")
 
     s = Settings.from_env()
 
@@ -95,6 +118,11 @@ def test_vectorstore_env_settings_parse(monkeypatch):
     assert s.pinecone_index == "custom-index"
     assert s.pinecone_cloud == "gcp"
     assert s.pinecone_region == "us-central1"
+    assert s.embeddings == "nebius"
+    assert s.nebius_base_url == "https://nebius.test/v1"
+    assert s.nebius_api_key == "neb-test"
+    assert s.nebius_embed_model == "custom/embedder"
+    assert s.embed_dim == 4096
 
 
 def test_rerank_env_settings_parse(monkeypatch, tmp_path):

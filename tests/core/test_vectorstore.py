@@ -333,6 +333,7 @@ def test_build_vectorstore_pinecone_passes_settings_and_namespace(monkeypatch):
     monkeypatch.setenv("GENACADEMY_PINECONE_INDEX", "custom-index")
     monkeypatch.setenv("GENACADEMY_PINECONE_CLOUD", "gcp")
     monkeypatch.setenv("GENACADEMY_PINECONE_REGION", "us-central1")
+    monkeypatch.setenv("GENACADEMY_EMBED_DIM", "4096")
     recorded = {}
 
     class _Recorder:
@@ -346,7 +347,7 @@ def test_build_vectorstore_pinecone_passes_settings_and_namespace(monkeypatch):
         "api_key": "pk-test",
         "index_name": "custom-index",
         "namespace": "serving",
-        "dimension": 384,
+        "dimension": 4096,
         "cloud": "gcp",
         "region": "us-central1",
     }

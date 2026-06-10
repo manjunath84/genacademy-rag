@@ -205,9 +205,9 @@ def build_vectorstore(settings, *, collection: str) -> VectorStore:
             api_key=settings.pinecone_api_key,
             index_name=settings.pinecone_index,
             namespace=collection,
-            # Pinned to the all-MiniLM-L6-v2 dimension. A different GENACADEMY_EMBED_MODEL
-            # needs an index whose dimension matches, or every upsert/query fails remotely.
-            dimension=EMBED_DIM,
+            # Must match the embedder used for this collection. Switching embedders requires
+            # re-ingesting into a matching-dimension index/collection.
+            dimension=settings.embed_dim,
             cloud=settings.pinecone_cloud,
             region=settings.pinecone_region,
         )
