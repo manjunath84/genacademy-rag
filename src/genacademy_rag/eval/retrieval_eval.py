@@ -3,6 +3,9 @@ A retrieved chunk counts only if it overlaps a gold span AND its commit_hash mat
 so production content (different/missing commit_hash) can never satisfy a gold marker."""
 from __future__ import annotations
 
+from math import ceil
+from statistics import median
+
 from genacademy_rag.core.types import Chunk
 from genacademy_rag.eval.gold_schema import GoldQuestion, GoldSpan
 
@@ -43,3 +46,33 @@ def aggregate(scores: list[dict]) -> dict:
 
     return {"n_retrieval_questions": n, "recall@k": mean("recall"),
             "precision@k": mean("precision"), "mrr": mean("mrr")}
+
+
+def latency_summary(values: list[float]) -> dict[str, float]:
+    if not values:
+        return {
+            "retrieval_ms_mean": 0.0,
+            "retrieval_ms_p50": 0.0,
+            "retrieval_ms_p95": 0.0,
+        }
+    ordered = sorted(values)
+    p95_index = max(0, min(len(ordered) - 1, ceil(len(ordered) * 0.95) - 1))
+    return {
+        "retrieval_ms_mean": round(sum(ordered) / len(ordered), 3),
+        "retrieval_ms_p50": round(float(median(ordered)), 3),
+        "retrieval_ms_p95": round(ordered[p95_index], 3),
+    }
+
+
+def build_retrieval_eval_payload(
+    *,
+    metrics: dict,
+    rows: list[dict],
+    config: dict,
+) -> dict:
+    return {
+        "metrics": metrics,
+        "latency": latency_summary([float(row["retrieval_ms"]) for row in rows]),
+        "config": config,
+        "questions": rows,
+    }

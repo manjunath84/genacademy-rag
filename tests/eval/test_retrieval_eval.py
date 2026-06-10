@@ -1,6 +1,12 @@
 from genacademy_rag.core.types import Chunk, Citation, RetrievedChunk
 from genacademy_rag.eval.gold_schema import GoldQuestion, GoldSpan
-from genacademy_rag.eval.retrieval_eval import aggregate, chunk_matches_span, score_question
+from genacademy_rag.eval.retrieval_eval import (
+    aggregate,
+    build_retrieval_eval_payload,
+    chunk_matches_span,
+    latency_summary,
+    score_question,
+)
 
 
 def _rc(line_start, line_end, commit="abc123", text="x"):
@@ -36,3 +42,38 @@ def test_unanswerable_question_excluded_from_retrieval_metrics():
     assert s["recall"] is None               # not a retrieval-scored question
     agg = aggregate([s])
     assert agg["n_retrieval_questions"] == 0
+
+
+def test_latency_summary_reports_mean_p50_and_p95():
+    summary = latency_summary([10.0, 30.0, 20.0, 40.0])
+
+    assert summary == {
+        "retrieval_ms_mean": 25.0,
+        "retrieval_ms_p50": 25.0,
+        "retrieval_ms_p95": 40.0,
+    }
+
+
+def test_retrieval_eval_payload_includes_metrics_rows_latency_and_config():
+    rows = [
+        {"id": "q1", "recall": 1.0, "precision": 0.2, "mrr": 1.0, "retrieval_ms": 10.0},
+        {"id": "q2", "recall": 0.0, "precision": 0.0, "mrr": 0.0, "retrieval_ms": 30.0},
+    ]
+    payload = build_retrieval_eval_payload(
+        metrics={"recall@k": 0.5, "precision@k": 0.1, "mrr": 0.5, "n_retrieval_questions": 2},
+        rows=rows,
+        config={"rerank_enabled": True, "rerank_pool": 0, "rerank_device": "cpu"},
+    )
+
+    assert payload["metrics"]["recall@k"] == 0.5
+    assert payload["questions"] == rows
+    assert payload["latency"] == {
+        "retrieval_ms_mean": 20.0,
+        "retrieval_ms_p50": 20.0,
+        "retrieval_ms_p95": 30.0,
+    }
+    assert payload["config"] == {
+        "rerank_enabled": True,
+        "rerank_pool": 0,
+        "rerank_device": "cpu",
+    }

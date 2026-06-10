@@ -10,7 +10,10 @@ from typing import Protocol
 
 from rank_bm25 import BM25Okapi
 
+from genacademy_rag.core.reranker import Reranker
 from genacademy_rag.core.types import Chunk, RetrievedChunk
+
+DEFAULT_CANDIDATE_K = 20
 
 
 class Retriever(Protocol):
@@ -49,12 +52,15 @@ def _build_index(chunks: list[Chunk]) -> _Index:
 
 class HybridRetriever:
     def __init__(self, *, store, provider, all_chunks: list[Chunk], top_k: int = 5,
-                 candidate_k: int = 20, rrf_k: int = 60):
+                 candidate_k: int = DEFAULT_CANDIDATE_K, rrf_k: int = 60,
+                 reranker: Reranker | None = None, rerank_pool: int = 0):
         self._store = store
         self._provider = provider
         self._top_k = top_k
         self._candidate_k = candidate_k
         self._rrf_k = rrf_k
+        self._reranker = reranker
+        self._rerank_pool = rerank_pool
         self._corpus_lock = threading.Lock()
         self._index = _build_index(all_chunks)
 
@@ -83,9 +89,17 @@ class HybridRetriever:
                 bm25_order = sorted(range(len(scores)), key=lambda j: scores[j], reverse=True)
                 sparse_ids = [index.ids[i] for i in bm25_order][: self._candidate_k]
             fused = rrf_fuse([dense_ids, sparse_ids], k=self._rrf_k)        # ranking signal
-            ranked = sorted(fused, key=fused.get, reverse=True)[:self._top_k]
+            rrf_ranked = sorted(fused, key=lambda cid: fused[cid], reverse=True)
+            ranked = rrf_ranked[:self._top_k]
+            if self._reranker is not None:
+                pool_ids = rrf_ranked if self._rerank_pool <= 0 else rrf_ranked[:self._rerank_pool]
+                pool_chunks = [index.chunks_by_id[cid] for cid in pool_ids]
+                ranked = [
+                    chunk.chunk_id
+                    for chunk, _score in self._reranker.rerank(query, pool_chunks)
+                ][:self._top_k]
             # score = cosine similarity (the grader's confidence signal); 0.0 for BM25-only hits.
-            # RRF decides ORDER; cosine sim is carried separately for the grader fallback.
+            # RRF/rerank decide ORDER; cosine sim is carried separately for the grader fallback.
             return [
                 RetrievedChunk(chunk=index.chunks_by_id[cid], score=sim_by_id.get(cid, 0.0))
                 for cid in ranked

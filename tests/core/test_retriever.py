@@ -11,6 +11,25 @@ def _chunk(i, text):
     return Chunk(chunk_id=f"d1::{i}", doc_id="d1", ordinal=i, text=text, citation=cit)
 
 
+class _DenseStore:
+    def __init__(self, hits):
+        self.hits = list(hits)
+
+    def query(self, qvec, top_k):
+        return self.hits[:top_k]
+
+
+class _FakeReranker:
+    def __init__(self, scores):
+        self.scores = dict(scores)
+        self.calls = []
+
+    def rerank(self, query, chunks):
+        self.calls.append([chunk.chunk_id for chunk in chunks])
+        scored = [(chunk, self.scores.get(chunk.chunk_id, 0.0)) for chunk in chunks]
+        return sorted(scored, key=lambda item: item[1], reverse=True)
+
+
 def test_rrf_rewards_items_ranked_high_in_both_lists():
     dense = ["a", "b", "c"]
     sparse = ["b", "a", "d"]
@@ -82,6 +101,136 @@ def test_retrieved_score_is_cosine_similarity_not_rrf(fake_provider):
     retr = HybridRetriever(store=_Store(), provider=fake_provider, all_chunks=[chunk], top_k=1)
     [r] = retr.retrieve("retrieval augmented generation")
     assert r.score == 0.91               # cosine sim carried through, not 2/61
+
+
+def test_rerank_disabled_preserves_rrf_top_k(fake_provider):
+    chunks = [
+        _chunk(0, "common alpha"),
+        _chunk(1, "common beta"),
+        _chunk(2, "semantic rescue candidate"),
+        _chunk(3, "common delta"),
+    ]
+    store = _DenseStore([("d1::0", 0.90), ("d1::1", 0.80), ("d1::2", 0.70)])
+    retr = HybridRetriever(
+        store=store,
+        provider=fake_provider,
+        all_chunks=chunks,
+        top_k=2,
+        candidate_k=3,
+    )
+
+    assert [r.chunk.chunk_id for r in retr.retrieve("common")] == ["d1::0", "d1::1"]
+
+
+def test_enabled_rerank_sees_full_fused_union_and_can_rescue_below_top_k(fake_provider):
+    chunks = [
+        _chunk(0, "common alpha"),
+        _chunk(1, "common beta"),
+        _chunk(2, "semantic rescue candidate"),
+        _chunk(3, "common delta"),
+    ]
+    store = _DenseStore([("d1::0", 0.90), ("d1::1", 0.80), ("d1::2", 0.70)])
+    reranker = _FakeReranker({"d1::2": 9.0, "d1::0": 1.0, "d1::1": 0.5, "d1::3": 0.1})
+    retr = HybridRetriever(
+        store=store,
+        provider=fake_provider,
+        all_chunks=chunks,
+        top_k=2,
+        candidate_k=3,
+        reranker=reranker,
+    )
+
+    results = retr.retrieve("common")
+
+    assert reranker.calls == [["d1::0", "d1::1", "d1::2", "d1::3"]]
+    assert [r.chunk.chunk_id for r in results] == ["d1::2", "d1::0"]
+    assert [r.score for r in results] == [0.70, 0.90]
+
+
+def test_rerank_pool_truncates_by_rrf_rank_before_rerank(fake_provider):
+    chunks = [
+        _chunk(0, "common alpha"),
+        _chunk(1, "common beta"),
+        _chunk(2, "semantic rescue candidate"),
+        _chunk(3, "common delta"),
+    ]
+    store = _DenseStore([("d1::0", 0.90), ("d1::1", 0.80), ("d1::2", 0.70)])
+    reranker = _FakeReranker({"d1::2": 9.0, "d1::0": 1.0, "d1::1": 0.5, "d1::3": 0.1})
+    retr = HybridRetriever(
+        store=store,
+        provider=fake_provider,
+        all_chunks=chunks,
+        top_k=2,
+        candidate_k=3,
+        reranker=reranker,
+        rerank_pool=2,
+    )
+
+    results = retr.retrieve("common")
+
+    assert reranker.calls == [["d1::0", "d1::1"]]
+    assert [r.chunk.chunk_id for r in results] == ["d1::0", "d1::1"]
+
+
+def test_rerank_ties_preserve_rrf_order_and_repeat_deterministically(fake_provider):
+    chunks = [
+        _chunk(0, "common alpha"),
+        _chunk(1, "common beta"),
+        _chunk(2, "semantic only"),
+        _chunk(3, "common delta"),
+    ]
+    store = _DenseStore([("d1::0", 0.90), ("d1::1", 0.80), ("d1::2", 0.70)])
+    reranker = _FakeReranker({"d1::0": 1.0, "d1::1": 1.0, "d1::2": 1.0, "d1::3": 1.0})
+    retr = HybridRetriever(
+        store=store,
+        provider=fake_provider,
+        all_chunks=chunks,
+        top_k=4,
+        candidate_k=3,
+        reranker=reranker,
+    )
+
+    first = [r.chunk.chunk_id for r in retr.retrieve("common")]
+    second = [r.chunk.chunk_id for r in retr.retrieve("common")]
+
+    assert first == ["d1::0", "d1::1", "d1::2", "d1::3"]
+    assert second == first
+
+
+def test_reranker_score_never_overwrites_retrieved_cosine_score(fake_provider):
+    chunk = _chunk(0, "retrieval augmented generation")
+    reranker = _FakeReranker({"d1::0": 999.0})
+    retr = HybridRetriever(
+        store=_DenseStore([("d1::0", 0.42)]),
+        provider=fake_provider,
+        all_chunks=[chunk],
+        top_k=1,
+        reranker=reranker,
+    )
+
+    [result] = retr.retrieve("retrieval augmented generation")
+
+    assert result.score == 0.42
+
+
+def test_reranked_bm25_only_hit_keeps_zero_cosine_score(fake_provider):
+    dense = _chunk(0, "dense semantic neighbor")
+    bm25_only = _chunk(1, "QLoRA exact keyword")
+    filler = _chunk(2, "unrelated filler text")
+    reranker = _FakeReranker({"d1::1": 10.0, "d1::0": 1.0})
+    retr = HybridRetriever(
+        store=_DenseStore([("d1::0", 0.88)]),
+        provider=fake_provider,
+        all_chunks=[dense, bm25_only, filler],
+        top_k=1,
+        candidate_k=1,
+        reranker=reranker,
+    )
+
+    [result] = retr.retrieve("QLoRA")
+
+    assert result.chunk.chunk_id == "d1::1"
+    assert result.score == 0.0
 
 
 def test_reindex_uses_single_snapshot_not_torn_fields(fake_provider):

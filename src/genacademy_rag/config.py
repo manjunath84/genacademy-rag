@@ -32,6 +32,18 @@ DATA_DIR = REPO_ROOT / "data"
 CURATED_MATERIALS_DIR = REPO_ROOT.parent.parent / "CuratedRAGMaterials"
 
 
+def _env_bool(name: str, default: bool) -> bool:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _env_path(name: str) -> Path | None:
+    raw = os.environ.get(name)
+    return Path(raw) if raw else None
+
+
 @dataclass(frozen=True)
 class Settings:
     provider: str
@@ -45,6 +57,13 @@ class Settings:
     chroma_dir: Path
     sqlite_path: Path
     session_secret: str
+    rerank_enabled: bool
+    rerank_model: str
+    rerank_local_files_only: bool
+    rerank_batch_size: int
+    rerank_pool: int
+    rerank_device: str | None
+    rerank_cache_dir: Path | None
 
     def __post_init__(self):
         if self.session_secret == "dev-only-change-me":
@@ -77,4 +96,14 @@ class Settings:
                 os.environ.get("GENACADEMY_SQLITE", str(DATA_DIR / "genacademy.sqlite"))
             ),
             session_secret=os.environ.get("GENACADEMY_SESSION_SECRET", "dev-only-change-me"),
+            rerank_enabled=_env_bool("GENACADEMY_RERANK_ENABLED", False),
+            rerank_model=os.environ.get(
+                "GENACADEMY_RERANK_MODEL",
+                "cross-encoder/ms-marco-MiniLM-L6-v2",
+            ),
+            rerank_local_files_only=_env_bool("GENACADEMY_RERANK_LOCAL_FILES_ONLY", True),
+            rerank_batch_size=int(os.environ.get("GENACADEMY_RERANK_BATCH_SIZE", "32")),
+            rerank_pool=int(os.environ.get("GENACADEMY_RERANK_POOL", "0")),
+            rerank_device=os.environ.get("GENACADEMY_RERANK_DEVICE") or None,
+            rerank_cache_dir=_env_path("GENACADEMY_RERANK_CACHE_DIR"),
         )

@@ -9,7 +9,8 @@ from pathlib import Path
 from genacademy_rag.config import Settings
 from genacademy_rag.core.pipeline import QueryPipeline
 from genacademy_rag.core.providers import build_provider
-from genacademy_rag.core.retriever import HybridRetriever
+from genacademy_rag.core.reranker import build_reranker
+from genacademy_rag.core.retriever import DEFAULT_CANDIDATE_K, HybridRetriever
 from genacademy_rag.core.vectorstore import ChromaStore
 from genacademy_rag.eval.faithfulness_eval import citation_grounding_score, llm_judge_score
 from genacademy_rag.eval.gold_schema import load_gold_set
@@ -28,7 +29,15 @@ def main():
     provider = build_provider(s)
     store = ChromaStore(persist_dir=s.chroma_dir, collection="eval")
     chunks = store.get_all_chunks()                  # public accessor, not store._col
-    retriever = HybridRetriever(store=store, provider=provider, all_chunks=chunks, top_k=s.top_k)
+    retriever = HybridRetriever(
+        store=store,
+        provider=provider,
+        all_chunks=chunks,
+        top_k=s.top_k,
+        candidate_k=DEFAULT_CANDIDATE_K,
+        reranker=build_reranker(s),
+        rerank_pool=s.rerank_pool,
+    )
     qp = QueryPipeline(retriever=retriever, provider=provider)
     gold = load_gold_set(GOLD)
 

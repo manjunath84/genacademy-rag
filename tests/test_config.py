@@ -14,3 +14,43 @@ def test_provider_preset_resolves_base_url_key_and_model(monkeypatch):
 
 def test_known_presets_present():
     assert {"nebius", "openrouter", "openai", "gemma"} <= set(PROVIDER_PRESETS)
+
+
+def test_rerank_defaults_are_disabled_and_offline(monkeypatch):
+    monkeypatch.delenv("GENACADEMY_RERANK_ENABLED", raising=False)
+    monkeypatch.delenv("GENACADEMY_RERANK_MODEL", raising=False)
+    monkeypatch.delenv("GENACADEMY_RERANK_LOCAL_FILES_ONLY", raising=False)
+    monkeypatch.delenv("GENACADEMY_RERANK_BATCH_SIZE", raising=False)
+    monkeypatch.delenv("GENACADEMY_RERANK_POOL", raising=False)
+    monkeypatch.delenv("GENACADEMY_RERANK_DEVICE", raising=False)
+    monkeypatch.delenv("GENACADEMY_RERANK_CACHE_DIR", raising=False)
+
+    s = Settings.from_env()
+
+    assert s.rerank_enabled is False
+    assert s.rerank_model == "cross-encoder/ms-marco-MiniLM-L6-v2"
+    assert s.rerank_local_files_only is True
+    assert s.rerank_batch_size == 32
+    assert s.rerank_pool == 0
+    assert s.rerank_device is None
+    assert s.rerank_cache_dir is None
+
+
+def test_rerank_env_settings_parse(monkeypatch, tmp_path):
+    monkeypatch.setenv("GENACADEMY_RERANK_ENABLED", "true")
+    monkeypatch.setenv("GENACADEMY_RERANK_MODEL", "custom/reranker")
+    monkeypatch.setenv("GENACADEMY_RERANK_LOCAL_FILES_ONLY", "false")
+    monkeypatch.setenv("GENACADEMY_RERANK_BATCH_SIZE", "8")
+    monkeypatch.setenv("GENACADEMY_RERANK_POOL", "12")
+    monkeypatch.setenv("GENACADEMY_RERANK_DEVICE", "cpu")
+    monkeypatch.setenv("GENACADEMY_RERANK_CACHE_DIR", str(tmp_path / "hf-cache"))
+
+    s = Settings.from_env()
+
+    assert s.rerank_enabled is True
+    assert s.rerank_model == "custom/reranker"
+    assert s.rerank_local_files_only is False
+    assert s.rerank_batch_size == 8
+    assert s.rerank_pool == 12
+    assert s.rerank_device == "cpu"
+    assert s.rerank_cache_dir == tmp_path / "hf-cache"
