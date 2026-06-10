@@ -110,8 +110,10 @@ def test_prepared_ingest_embeds_before_persistence(fake_provider):
 
     assert calls == []
     assert pipe.commit(prepared) == 1
+    # Vector store FIRST: if a remote upsert fails, no SQLite row exists, so the admin
+    # list never shows a document that is not actually searchable.
     assert calls == [
+        ("upsert", ["pdf/abc::0"], 1),
         ("add_document", "pdf/abc", 1),
         ("add_chunks_meta", ["pdf/abc::0"]),
-        ("upsert", ["pdf/abc::0"], 1),
     ]

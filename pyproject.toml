@@ -16,7 +16,7 @@ dependencies = [
     "langgraph==1.2.4",
     "nbformat==5.10.4",
     "openai==2.41.0",
-    "pinecone==9.1.0",
+    "pinecone==9.1.0",  # pin bump requires a scripts/smoke_pinecone.py run (fakes assume SDK shapes)
     "pypdf==6.13.1",
     "python-multipart==0.0.32",
     "pyyaml==6.0.3",

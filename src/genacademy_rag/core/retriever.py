@@ -71,6 +71,13 @@ class HybridRetriever:
         with self._corpus_lock:
             self._swap_index_unlocked(all_chunks)
 
+    def snapshot_chunks(self) -> list[Chunk]:
+        """Current corpus in index order. Lock-free on purpose: `_index` is an immutable
+        snapshot swapped atomically, so this is safe to call from inside a `mutate_corpus`
+        mutation (which already holds the lock) without deadlocking."""
+        index = self._index
+        return [index.chunks_by_id[cid] for cid in index.ids]
+
     def mutate_corpus(self, mutation: Callable[[], list[Chunk]]) -> None:
         with self._corpus_lock:
             self._swap_index_unlocked(mutation())

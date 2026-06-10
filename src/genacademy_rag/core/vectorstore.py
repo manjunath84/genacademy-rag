@@ -4,10 +4,13 @@ the store only holds+searches precomputed vectors. Score contract: query() retur
 SIMILARITY — Chroma reports distance (converted via 1-d), Pinecone reports similarity directly."""
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Protocol
 
 from genacademy_rag.core.types import Chunk, Citation
+
+logger = logging.getLogger(__name__)
 
 
 class VectorStore(Protocol):
@@ -42,8 +45,8 @@ class ChromaStore:
 
     def query(self, query_embedding: list[float], top_k: int) -> list[tuple[str, float]]:
         # Return (chunk_id, cosine_similarity). Chroma cosine space gives DISTANCE; sim = 1 - dist.
-        # The similarity is the confidence signal the grader's cosine fallback uses (see Task 7);
-        # RRF (Task 6) handles ranking. Returning raw IDs only would leave the fallback no signal.
+        # The similarity is the confidence signal the grader's cosine fallback uses; RRF fusion in
+        # HybridRetriever handles ranking. Returning raw IDs would leave the fallback no signal.
         res = self._col.query(query_embeddings=[list(map(float, query_embedding))],
                               n_results=top_k, include=["distances"])
         if not res["ids"] or not res["ids"][0]:
@@ -60,7 +63,7 @@ class ChromaStore:
                      text=text, citation=Citation.from_metadata(meta))
 
     def get_all_chunks(self) -> list[Chunk]:
-        """Public accessor so callers never reach into `_col` (keeps the Pinecone swap clean)."""
+        """Public accessor so callers never reach into `_col` (keeps stores interchangeable)."""
         res = self._col.get(include=["documents", "metadatas"])
         out: list[Chunk] = []
         for cid, doc, meta in zip(res["ids"], res["documents"], res["metadatas"], strict=True):
@@ -88,13 +91,16 @@ _PINECONE_DELETE_BATCH = 1000   # API cap: at most 1000 ids per delete request
 class PineconeStore:
     """Serverless Pinecone index behind the VectorStore Protocol. Chunk text and citation live in
     vector metadata (Pinecone rejects None values; Citation.to_metadata already strips them; the
-    ~40KB-per-vector metadata cap comfortably fits the project's <=1500-char chunks).
+    ~40KB-per-vector metadata cap comfortably fits the project's default <=1500-char chunks —
+    env-tunable, so stay well under the cap if raising chunk sizes).
     `collection` maps to a Pinecone namespace. delete_doc lists ids by `{doc_id}::` prefix because
     serverless indexes do not support metadata-filtered deletes.
 
     Consistency caveat: serverless reads (query/fetch/list) lag writes by seconds. Callers must
-    not assume read-your-writes — the web app builds its in-memory corpus from locally known
-    chunks after each mutation, and the admin reindex re-read is the recovery path."""
+    not assume read-your-writes — the web app derives its in-memory corpus from the retriever's
+    snapshot plus local deltas on every mutation, and the admin reindex is the one deliberate
+    remote re-read (recovery path for missing chunks), filtered against the datastore's deletion
+    ledger so lagged deletes cannot resurrect."""
 
     def __init__(self, *, api_key: str, index_name: str, namespace: str = "",
                  dimension: int = EMBED_DIM, cloud: str = "aws", region: str = "us-east-1",
@@ -129,7 +135,12 @@ class PineconeStore:
                                 namespace=self._namespace)
         return [(m.id, float(m.score)) for m in res.matches]
 
-    def _chunk_from_metadata(self, chunk_id: str, metadata: dict) -> Chunk:
+    def _chunk_from_metadata(self, chunk_id: str, metadata: dict | None) -> Chunk:
+        if not metadata or "text" not in metadata or "doc_id" not in metadata:
+            raise ValueError(
+                f"vector {chunk_id!r} in Pinecone namespace {self._namespace!r} lacks required "
+                "metadata (text/doc_id) — was it written by something other than this app?"
+            )
         m = dict(metadata)
         text = m.pop("text")
         for field in _INT_META_FIELDS:
@@ -155,6 +166,13 @@ class PineconeStore:
             res = self._index.fetch(ids=ids[i:i + _PINECONE_BATCH], namespace=self._namespace)
             chunks.extend(self._chunk_from_metadata(cid, v.metadata)
                           for cid, v in res.vectors.items())
+        if len(chunks) != len(ids):
+            # fetch silently omits missing ids (eventually-consistent read or a racing
+            # delete) — surface it, or the corpus shrinks with no signal at all.
+            logger.warning(
+                "Pinecone get_all_chunks: listed %d ids but fetched %d in namespace %r — "
+                "read may be partial", len(ids), len(chunks), self._namespace,
+            )
         # Pinecone list order is arbitrary; BM25 index build needs a deterministic corpus order.
         return sorted(chunks, key=lambda c: (c.doc_id, c.ordinal))
 
@@ -162,6 +180,14 @@ class PineconeStore:
         ids = [item.id for page in self._index.list(prefix=f"{doc_id}::",
                                                     namespace=self._namespace)
                for item in page.vectors]
+        if not ids:
+            # A lagging list() means the doc's vectors are orphaned remotely. They can
+            # never be served (the retriever drops unknown ids) but the operator should
+            # know they exist; the reindex deletion-ledger filter keeps them out forever.
+            logger.warning(
+                "Pinecone delete_doc(%r): listing returned no ids in namespace %r — "
+                "vectors may be orphaned by a lagging read", doc_id, self._namespace,
+            )
         for i in range(0, len(ids), _PINECONE_DELETE_BATCH):
             self._index.delete(ids=ids[i:i + _PINECONE_DELETE_BATCH], namespace=self._namespace)
 

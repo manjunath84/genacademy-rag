@@ -1,6 +1,7 @@
 """Thin FastAPI view. ALL RAG logic is injected (QueryPipeline); no core logic here. Non-streaming
 form-post (HTMX-ready). create_app(retriever, provider, datastore) lets tests inject fakes; the
-real wiring (local embed + provider preset + ingested Chroma) happens in build_default_app()."""
+real wiring (local embed + provider preset + serving vector store via GENACADEMY_VECTORSTORE;
+eval pinned to local Chroma) happens in build_default_app()."""
 from __future__ import annotations
 
 import hmac
@@ -255,6 +256,10 @@ def create_app(
         try:
             ingest_upload(doc)
         except Exception:
+            logger.exception(
+                "ingest failed for doc_id=%s — datastore and vector store may have "
+                "diverged; delete the document (if listed) and re-upload", doc.doc_id,
+            )
             if stored_path is not None:
                 stored_path.unlink(missing_ok=True)
             raise
@@ -301,9 +306,10 @@ def create_app(
         if serving_store is not None:
             def mutation():
                 serving_store.delete_doc(doc_id)
-                # Filter locally: a lagging remote read must not resurrect the deleted
-                # doc into the in-memory index.
-                return [c for c in serving_store.get_all_chunks() if c.doc_id != doc_id]
+                # Rebuild from the in-memory snapshot, not a remote re-read: an
+                # eventually-consistent store could return stale state and evict or
+                # resurrect unrelated docs. snapshot_chunks() is deadlock-safe here.
+                return [c for c in retriever.snapshot_chunks() if c.doc_id != doc_id]
 
             retriever.mutate_corpus(mutation)
         if doc.get("stored_path"):
@@ -321,7 +327,22 @@ def create_app(
         if not valid_csrf(request, csrf_token_value):
             return csrf_forbidden()
         if serving_store is not None:
-            retriever.mutate_corpus(lambda: serving_store.get_all_chunks())
+            def mutation():
+                # Reindex is the one deliberate remote re-read (recovery path for chunks
+                # missing from memory). Filter it against the datastore's deletion ledger
+                # so orphaned vectors from a lagged delete can never resurrect a deleted
+                # doc, and log the corpus-size change as the partial-read signal.
+                deleted_ids = {
+                    d["id"] for d in datastore.list_documents() if d["status"] == "deleted"
+                }
+                before = len(retriever.snapshot_chunks())
+                chunks = [
+                    c for c in serving_store.get_all_chunks() if c.doc_id not in deleted_ids
+                ]
+                logger.info("reindex: corpus %d -> %d chunks", before, len(chunks))
+                return chunks
+
+            retriever.mutate_corpus(mutation)
         return RedirectResponse("/admin/documents", status_code=303)
 
     return app
@@ -352,6 +373,8 @@ def build_default_app() -> FastAPI:
         # (Pinecone) is eventually consistent, so an immediate re-read can return []
         # and boot a retriever that refuses every question.
         serving_chunks = chunks
+    # The count is the operator's signal for a partially visible remote namespace.
+    logger.info("boot corpus: %d chunks from %s serving store", len(serving_chunks), s.vectorstore)
     retriever = HybridRetriever(
         store=serving,
         provider=provider,
@@ -382,12 +405,13 @@ def build_default_app() -> FastAPI:
 
         def mutation():
             pipe.commit(prepared)
-            # Union with the just-committed chunks: a remote store's read can lag the
-            # write, and a chunk missing from the in-memory index is unsearchable
-            # (the retriever drops dense hits whose id it does not know).
+            # Union the in-memory snapshot with the just-committed chunks. No remote
+            # re-read here: an eventually-consistent store could lag this upload (making
+            # it unsearchable — the retriever drops dense hits whose id it does not know)
+            # or lag earlier mutations (evicting/resurrecting unrelated docs).
             new_chunks = [c for item in prepared for c in item.chunks]
             new_ids = {c.chunk_id for c in new_chunks}
-            current = [c for c in serving.get_all_chunks() if c.chunk_id not in new_ids]
+            current = [c for c in retriever.snapshot_chunks() if c.chunk_id not in new_ids]
             return current + new_chunks
 
         retriever.mutate_corpus(mutation)

@@ -36,7 +36,16 @@ def _env_bool(name: str, default: bool) -> bool:
     raw = os.environ.get(name)
     if raw is None:
         return default
-    return raw.strip().lower() in {"1", "true", "yes", "on"}
+    value = raw.strip().lower()
+    if value in {"1", "true", "yes", "on"}:
+        return True
+    if value in {"0", "false", "no", "off", ""}:
+        return False
+    # Refuse to guess: silently coercing a typo to False can flip a default-True
+    # safety flag (e.g. RERANK_LOCAL_FILES_ONLY) to the more permissive setting.
+    raise ValueError(
+        f"{name}={raw!r} is not a recognized boolean; use 1/true/yes/on or 0/false/no/off"
+    )
 
 
 def _env_path(name: str) -> Path | None:
@@ -89,6 +98,11 @@ class Settings:
                 f"unknown GENACADEMY_PROVIDER={provider!r}; one of {list(PROVIDER_PRESETS)}"
             )
         base_var, base_default, key_var, model_var = PROVIDER_PRESETS[provider]
+        vectorstore = os.environ.get("GENACADEMY_VECTORSTORE", "chroma")
+        if vectorstore not in ("chroma", "pinecone"):
+            raise ValueError(
+                f"unknown GENACADEMY_VECTORSTORE={vectorstore!r}; one of ['chroma', 'pinecone']"
+            )
         return cls(
             provider=provider,
             gen_base_url=os.environ.get(base_var, base_default),
@@ -122,7 +136,7 @@ class Settings:
             rerank_pool=int(os.environ.get("GENACADEMY_RERANK_POOL", "0")),
             rerank_device=os.environ.get("GENACADEMY_RERANK_DEVICE") or None,
             rerank_cache_dir=_env_path("GENACADEMY_RERANK_CACHE_DIR"),
-            vectorstore=os.environ.get("GENACADEMY_VECTORSTORE", "chroma"),
+            vectorstore=vectorstore,
             pinecone_api_key=os.environ.get("PINECONE_API_KEY", ""),
             pinecone_index=os.environ.get("GENACADEMY_PINECONE_INDEX", "genacademy-rag"),
             pinecone_cloud=os.environ.get("GENACADEMY_PINECONE_CLOUD", "aws"),

@@ -209,6 +209,67 @@ def test_pinecone_get_all_chunks_paginates_and_sorts_by_doc_and_ordinal():
     assert [c.chunk_id for c in got] == ["d1::0", "d1::1", "d1::2", "d1::10"]
 
 
+def test_pinecone_upsert_and_fetch_batch_at_100():
+    store, client = _pinecone_store()
+    chunks = [_chunk(i, f"text {i}") for i in range(101)]
+
+    store.upsert(chunks, [[0.1] * 384] * 101)
+
+    upsert_calls = [c for c in client.index.calls if c[0] == "upsert"]
+    assert [len(c[1]) for c in upsert_calls] == [100, 1]
+    assert len(client.index.vectors) == 101
+
+    got = store.get_all_chunks()
+
+    fetch_calls = [c for c in client.index.calls if c[0] == "fetch"]
+    assert [len(c[1]) for c in fetch_calls] == [100, 1]
+    assert len(got) == 101
+
+
+def test_pinecone_get_all_chunks_empty_namespace_returns_empty_without_fetch():
+    store, client = _pinecone_store()
+
+    assert store.get_all_chunks() == []
+    # The real SDK rejects fetch(ids=[]) — the empty namespace must never reach fetch.
+    assert all(call[0] != "fetch" for call in client.index.calls)
+
+
+def test_pinecone_get_all_chunks_warns_on_partial_fetch(caplog):
+    store, client = _pinecone_store()
+    store.upsert([_chunk(0, "a"), _chunk(1, "b")], [[0.1] * 384] * 2)
+    original_fetch = client.index.fetch
+
+    def partial_fetch(*, ids, namespace):
+        res = original_fetch(ids=ids, namespace=namespace)
+        res.vectors.pop("d1::1", None)     # fetch silently omits a listed id
+        return res
+
+    client.index.fetch = partial_fetch
+    with caplog.at_level("WARNING"):
+        got = store.get_all_chunks()
+
+    assert [c.chunk_id for c in got] == ["d1::0"]
+    assert any("listed 2 ids but fetched 1" in r.message for r in caplog.records)
+
+
+def test_pinecone_delete_doc_warns_when_listing_returns_nothing(caplog):
+    store, client = _pinecone_store()
+
+    with caplog.at_level("WARNING"):
+        store.delete_doc("d-unknown")
+
+    assert any("orphaned" in r.message for r in caplog.records)
+    assert all(call[0] != "delete" for call in client.index.calls)
+
+
+def test_pinecone_foreign_vector_without_metadata_raises_with_context():
+    store, client = _pinecone_store()
+    client.index.vectors["alien::0"] = {"values": [0.1], "metadata": None}
+
+    with pytest.raises(ValueError, match="alien::0.*serving.*written by something other"):
+        store.get_chunk("alien::0")
+
+
 def test_pinecone_get_chunk_missing_id_raises_clear_keyerror():
     store, _client = _pinecone_store()
 
@@ -263,9 +324,39 @@ def test_build_vectorstore_pinecone_without_key_fails_loudly(monkeypatch, tmp_pa
         build_vectorstore(s, collection="serving")
 
 
-def test_build_vectorstore_rejects_unknown_name(monkeypatch):
+def test_build_vectorstore_pinecone_passes_settings_and_namespace(monkeypatch):
+    import genacademy_rag.core.vectorstore as vs_module
     from genacademy_rag.config import Settings
 
-    monkeypatch.setenv("GENACADEMY_VECTORSTORE", "faiss")
+    monkeypatch.setenv("GENACADEMY_VECTORSTORE", "pinecone")
+    monkeypatch.setenv("PINECONE_API_KEY", "pk-test")
+    monkeypatch.setenv("GENACADEMY_PINECONE_INDEX", "custom-index")
+    monkeypatch.setenv("GENACADEMY_PINECONE_CLOUD", "gcp")
+    monkeypatch.setenv("GENACADEMY_PINECONE_REGION", "us-central1")
+    recorded = {}
+
+    class _Recorder:
+        def __init__(self, **kwargs):
+            recorded.update(kwargs)
+
+    monkeypatch.setattr(vs_module, "PineconeStore", _Recorder)
+    build_vectorstore(Settings.from_env(), collection="serving")
+
+    assert recorded == {
+        "api_key": "pk-test",
+        "index_name": "custom-index",
+        "namespace": "serving",
+        "dimension": 384,
+        "cloud": "gcp",
+        "region": "us-central1",
+    }
+
+
+def test_build_vectorstore_rejects_unknown_name():
+    from dataclasses import replace
+
+    from genacademy_rag.config import Settings
+
+    s = replace(Settings.from_env(), vectorstore="faiss")
     with pytest.raises(ValueError, match="unknown vectorstore"):
-        build_vectorstore(Settings.from_env(), collection="serving")
+        build_vectorstore(s, collection="serving")

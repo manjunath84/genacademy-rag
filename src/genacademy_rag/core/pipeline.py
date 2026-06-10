@@ -36,6 +36,11 @@ class IngestPipeline:
         total = 0
         for item in prepared:
             doc = item.doc
+            # Vector store first: if a (possibly remote) upsert fails, no SQLite row exists,
+            # so the admin list never shows a document that is not actually searchable. The
+            # reverse failure (local SQLite after a successful upsert) is far rarer and only
+            # orphans vectors that the snapshot-built corpus never serves.
+            self._store.upsert(item.chunks, item.embeddings)
             self._datastore.add_document(
                 doc_id=doc.doc_id,
                 title=doc.title,
@@ -49,7 +54,6 @@ class IngestPipeline:
                 n_chunks=len(item.chunks),
             )
             self._datastore.add_chunks_meta(item.chunks)
-            self._store.upsert(item.chunks, item.embeddings)
             total += len(item.chunks)
         return total
 
