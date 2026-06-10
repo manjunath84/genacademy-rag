@@ -319,3 +319,57 @@ def test_concurrent_usage_writes_are_serialized(tmp_path):
     with ThreadPoolExecutor(max_workers=8) as pool:
         list(pool.map(write, range(40)))
     assert len(ds.recent_usage(limit=100)) == 40
+
+
+def _log_one(ds, email="member@genacademy.local"):
+    return ds.log_query(
+        user_email=email,
+        question="q?",
+        refused=False,
+        confidence=4,
+        used_fallback=False,
+        n_citations=2,
+        latency_ms=120,
+    )
+
+
+def test_log_query_returns_row_id(tmp_path):
+    ds = SQLiteDatastore(tmp_path / "t.sqlite")
+    first = _log_one(ds)
+    second = _log_one(ds)
+    assert isinstance(first, int)
+    assert second == first + 1
+
+
+def test_feedback_insert_and_summary(tmp_path):
+    ds = SQLiteDatastore(tmp_path / "t.sqlite")
+    qid = _log_one(ds)
+    ds.add_feedback(usage_log_id=qid, user_email="a@x.com", verdict=1)
+    ds.add_feedback(usage_log_id=qid, user_email="b@x.com", verdict=-1)
+    assert ds.feedback_summary() == {"up": 1, "down": 1}
+
+
+def test_feedback_upsert_flips_verdict_not_duplicates(tmp_path):
+    ds = SQLiteDatastore(tmp_path / "t.sqlite")
+    qid = _log_one(ds)
+    ds.add_feedback(usage_log_id=qid, user_email="a@x.com", verdict=1)
+    ds.add_feedback(usage_log_id=qid, user_email="a@x.com", verdict=-1)
+    assert ds.feedback_summary() == {"up": 0, "down": 1}
+
+
+def test_feedback_rejects_bad_verdict(tmp_path):
+    import pytest
+
+    ds = SQLiteDatastore(tmp_path / "t.sqlite")
+    qid = _log_one(ds)
+    with pytest.raises(ValueError):
+        ds.add_feedback(usage_log_id=qid, user_email="a@x.com", verdict=0)
+
+
+def test_feedback_table_survives_reopen(tmp_path):
+    path = tmp_path / "t.sqlite"
+    ds = SQLiteDatastore(path)
+    qid = _log_one(ds)
+    ds.add_feedback(usage_log_id=qid, user_email="a@x.com", verdict=1)
+    ds2 = SQLiteDatastore(path)
+    assert ds2.feedback_summary() == {"up": 1, "down": 0}

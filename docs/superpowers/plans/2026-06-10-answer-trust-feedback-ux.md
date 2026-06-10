@@ -599,7 +599,7 @@ git commit -m "feat: QueryResult carries merged SourceView rows"
 - Modify: `src/genacademy_rag/data/datastore.py` (SCHEMA `:20-49`, `log_query` `:328-353`, new methods after `recent_usage`)
 - Modify: `tests/data/test_datastore.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/data/test_datastore.py` (the file's existing tests construct `SQLiteDatastore(tmp_path / "test.db")` — follow that pattern):
 
@@ -656,12 +656,12 @@ def test_feedback_table_survives_reopen(tmp_path):
     assert ds2.feedback_summary() == {"up": 1, "down": 0}
 ```
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `uv run pytest tests/data/test_datastore.py -v -k "feedback or returns_row_id"`
 Expected: FAIL — `log_query` returns `None`; no `add_feedback` attribute
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `SCHEMA` (append before the closing `"""`):
 
@@ -734,12 +734,12 @@ Add after `recent_usage`:
             return {"up": row["up"], "down": row["down"]}
 ```
 
-- [ ] **Step 4: Run the whole datastore file**
+- [x] **Step 4: Run the whole datastore file**
 
 Run: `uv run pytest tests/data/test_datastore.py -v`
 Expected: all PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/genacademy_rag/data/datastore.py tests/data/test_datastore.py
