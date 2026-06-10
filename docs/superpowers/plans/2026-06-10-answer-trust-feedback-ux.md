@@ -1373,7 +1373,7 @@ unchanged and the faithfulness eval is re-run with the before/after delta record
 "measured, not asserted" applies to prompt changes too.
 ```
 
-- [ ] **Step 2: Commit and open the PR**
+- [x] **Step 2: Commit and open the PR**
 
 ```bash
 git add docs/answer-ux-decisions-and-tradeoffs.md
@@ -1392,7 +1392,7 @@ EOF
 )"
 ```
 
-- [ ] **Step 3: Builder ≠ reviewer gate**
+- [x] **Step 3: Builder ≠ reviewer gate**
 
 Per `AGENTS.md`, a different model / fresh context must review the PR before merge
 (the project's standard `pr-review-toolkit` pass). Do not merge without it.
