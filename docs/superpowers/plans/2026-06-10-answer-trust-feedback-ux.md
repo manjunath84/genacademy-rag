@@ -754,7 +754,7 @@ git commit -m "feat: feedback table + log_query returns row id"
 - Modify: `src/genacademy_rag/web/app.py` (new route after `ask`, `:180`)
 - Modify: `tests/web/test_app.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/web/test_app.py` (use the file's existing `_client` helper and its login pattern — existing tests log in by posting `/login` with the seeded `member@genacademy.local`/`member` credentials after fetching the CSRF token from the login page; follow the same regex extraction used there):
 
@@ -823,12 +823,12 @@ def test_feedback_write_failure_does_not_500(monkeypatch, tmp_path, caplog):
     assert "feedback write failed" in caplog.text
 ```
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `uv run pytest tests/web/test_app.py -v -k feedback`
 Expected: FAIL — 404/405 (route does not exist)
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `src/genacademy_rag/web/app.py`, after the `ask` route:
 
@@ -861,12 +861,12 @@ with `@pytest.mark.xfail(reason="query_id field lands with the chat.html rebuild
 now and remove the marker in Task 9 — or write the test in Task 9 instead. The other four
 tests must pass now.
 
-- [ ] **Step 4: Run to verify**
+- [x] **Step 4: Run to verify**
 
 Run: `uv run pytest tests/web/test_app.py -v -k feedback`
 Expected: 5 PASS, 1 xfail (happy path until Task 9)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/genacademy_rag/web/app.py tests/web/test_app.py

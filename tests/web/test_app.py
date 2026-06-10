@@ -82,6 +82,15 @@ def _login(client, email="member@genacademy.local", password="member"):
     )
 
 
+def _ask_and_get_query_id(client, token):
+    page = client.post(
+        "/ask",
+        data={"question": "What is RAG?", "csrf_token": token},
+    ).text
+    match = re.search(r'name="query_id" value="(\d+)"', page)
+    return match.group(1) if match else None, page
+
+
 def _admin_post(client, path: str, *, csrf_token: str | None = None):
     data = {}
     if path == "/admin/invites":
@@ -126,6 +135,61 @@ def test_refusal_is_rendered_not_an_answer(monkeypatch, tmp_path):
         data={"question": "who won the 2050 world cup?", "csrf_token": _csrf(page.text)},
     )
     assert "could not find" in r.text.lower()
+
+
+def test_feedback_requires_login(monkeypatch, tmp_path):
+    c = _client(monkeypatch, tmp_path)
+    r = c.post(
+        "/feedback",
+        data={"query_id": 1, "verdict": 1, "csrf_token": "x"},
+        follow_redirects=False,
+    )
+    assert r.status_code == 303
+    assert r.headers["location"] == "/login"
+
+
+def test_feedback_requires_csrf(monkeypatch, tmp_path):
+    c = _client(monkeypatch, tmp_path)
+    _login(c)
+    r = c.post("/feedback", data={"query_id": 1, "verdict": 1, "csrf_token": "wrong"})
+    assert r.status_code == 403
+
+
+def test_feedback_rejects_bad_verdict(monkeypatch, tmp_path):
+    c = _client(monkeypatch, tmp_path)
+    _login(c)
+    token = _csrf(c.get("/").text)
+    r = c.post("/feedback", data={"query_id": 1, "verdict": 7, "csrf_token": token})
+    assert r.status_code == 400
+
+
+@pytest.mark.xfail(reason="query_id field lands with the chat.html rebuild", strict=True)
+def test_feedback_happy_path_persists_and_returns_fragment(monkeypatch, tmp_path):
+    c = _client(monkeypatch, tmp_path)
+    _login(c)
+    token = _csrf(c.get("/").text)
+    qid, _ = _ask_and_get_query_id(c, token)
+    assert qid is not None
+    r = c.post("/feedback", data={"query_id": qid, "verdict": 1, "csrf_token": token})
+    assert r.status_code == 200
+    assert "Thanks for the feedback" in r.text
+    assert c.app.state.datastore.feedback_summary()["up"] == 1
+
+
+def test_feedback_write_failure_does_not_500(monkeypatch, tmp_path, caplog):
+    c = _client(monkeypatch, tmp_path)
+    _login(c)
+    token = _csrf(c.get("/").text)
+    ds = c.app.state.datastore
+
+    def boom(**kwargs):
+        raise RuntimeError("db down")
+
+    ds.add_feedback = boom
+    with caplog.at_level(logging.ERROR):
+        r = c.post("/feedback", data={"query_id": 1, "verdict": 1, "csrf_token": token})
+    assert r.status_code == 200
+    assert "feedback write failed" in caplog.text
 
 
 def test_signup_redeems_invite_and_logs_in(monkeypatch, tmp_path):

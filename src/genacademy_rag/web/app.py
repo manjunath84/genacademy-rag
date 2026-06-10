@@ -179,6 +179,26 @@ def create_app(
             request, "chat.html", csrf_context(request, {"result": result, "question": question})
         )
 
+    @app.post("/feedback", response_class=HTMLResponse)
+    def feedback(
+        request: Request,
+        query_id: int = Form(...),
+        verdict: int = Form(...),
+        csrf_token_value: str | None = Form(None, alias="csrf_token"),
+    ):
+        user = current_user(request)
+        if not user:
+            return RedirectResponse("/login", status_code=303)
+        if not valid_csrf(request, csrf_token_value):
+            return csrf_forbidden()
+        if verdict not in (1, -1):
+            return HTMLResponse("Bad verdict", status_code=400)
+        try:
+            datastore.add_feedback(usage_log_id=query_id, user_email=user, verdict=verdict)
+        except Exception:
+            logger.exception("feedback write failed (query_id=%r)", query_id)
+        return HTMLResponse('<span class="text-xs text-slate-500">Thanks for the feedback</span>')
+
     @app.get("/admin/invites", response_class=HTMLResponse)
     def admin_invites(request: Request):
         admin = require_admin(request)
