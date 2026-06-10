@@ -1,4 +1,5 @@
 def test_main_entrypoint_builds_default_app(monkeypatch):
+    import importlib
     import sys
 
     import genacademy_rag.web.app as app_module
@@ -6,9 +7,7 @@ def test_main_entrypoint_builds_default_app(monkeypatch):
     built = object()
     monkeypatch.setattr(app_module, "build_default_app", lambda: built)
 
-    import importlib
-    import genacademy_rag.web.main as main_module
-
+    main_module = importlib.import_module("genacademy_rag.web.main")
     main_module = importlib.reload(main_module)
 
     try:
