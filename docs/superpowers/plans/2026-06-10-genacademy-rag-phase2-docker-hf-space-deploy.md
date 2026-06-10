@@ -148,6 +148,8 @@ Create `tests/web/test_main_entrypoint.py`:
 
 ```python
 def test_main_entrypoint_builds_default_app(monkeypatch):
+    import sys
+
     import genacademy_rag.web.app as app_module
 
     built = object()
@@ -158,7 +160,10 @@ def test_main_entrypoint_builds_default_app(monkeypatch):
 
     main_module = importlib.reload(main_module)
 
-    assert main_module.app is built
+    try:
+        assert main_module.app is built
+    finally:
+        sys.modules.pop("genacademy_rag.web.main", None)
 ```
 
 - [ ] **Step 2: Run focused test and verify failure**
@@ -249,7 +254,7 @@ Expected: FAIL because `secure_cookies` and `GENACADEMY_DATA_DIR` are not implem
 
 Modify `src/genacademy_rag/config.py`.
 
-Add below `CURATED_MATERIALS_DIR`:
+Remove the unused `CURATED_MATERIALS_DIR` constant, then add below `DATA_DIR`:
 
 ```python
 def data_dir_from_env() -> Path:
@@ -364,11 +369,8 @@ Change session middleware setup:
     )
 ```
 
-Change `build_default_app()` import and uploads directory:
-
-```python
-    from genacademy_rag.config import data_dir_from_env
-```
+Delete the inner `from genacademy_rag.config import DATA_DIR` import in `build_default_app()`, and
+change the uploads directory:
 
 ```python
     uploads_dir = data_dir_from_env() / "uploads"
@@ -399,15 +401,16 @@ git commit -m "feat: add deploy data dir and secure cookies"
 
 - Create: `src/genacademy_rag/deploy/__init__.py`
 - Create: `src/genacademy_rag/deploy/bootstrap.py`
+- Create: `tests/deploy/__init__.py`
 - Create: `tests/deploy/test_bootstrap.py`
 
 - [ ] **Step 1: Add failing bootstrap tests**
 
+Create empty `tests/deploy/__init__.py`.
+
 Create `tests/deploy/test_bootstrap.py`:
 
 ```python
-import sys
-
 from genacademy_rag.config import Settings
 
 
@@ -458,7 +461,7 @@ def test_bootstrap_skips_when_eval_collection_has_chunks(monkeypatch, tmp_path, 
         lambda: state.__setitem__("ingest_called", True),
     )
 
-    bootstrap.main()
+    bootstrap.main([])
 
     assert state["collection"] == "eval"
     assert state["ingest_called"] is False
@@ -469,7 +472,7 @@ def test_bootstrap_runs_ingest_when_eval_collection_empty(monkeypatch, tmp_path)
     import genacademy_rag.deploy.bootstrap as bootstrap
 
     settings = _settings(tmp_path)
-    state = {"argv_seen": None}
+    state = {"reset": None}
 
     class _Store:
         def __init__(self, *, persist_dir, collection):
@@ -478,16 +481,67 @@ def test_bootstrap_runs_ingest_when_eval_collection_empty(monkeypatch, tmp_path)
         def get_all_chunks(self):
             return []
 
-    def fake_ingest():
-        state["argv_seen"] = list(sys.argv)
+    def fake_ingest(*, reset_collection):
+        state["reset"] = reset_collection
 
     monkeypatch.setattr(bootstrap.Settings, "from_env", classmethod(lambda cls: settings))
     monkeypatch.setattr(bootstrap, "ChromaStore", _Store)
     monkeypatch.setattr(bootstrap, "_run_ingest", fake_ingest)
 
-    bootstrap.main()
+    bootstrap.main([])
 
-    assert state["argv_seen"] == ["ingest_eval_corpus.py", "--chunker", "fixed"]
+    assert state["reset"] is False
+
+
+def test_bootstrap_force_reseeds_existing_eval_collection(monkeypatch, tmp_path):
+    import genacademy_rag.deploy.bootstrap as bootstrap
+
+    settings = _settings(tmp_path)
+    state = {"reset": None}
+
+    class _Store:
+        def __init__(self, *, persist_dir, collection):
+            pass
+
+        def get_all_chunks(self):
+            return [object()]
+
+    monkeypatch.setattr(bootstrap.Settings, "from_env", classmethod(lambda cls: settings))
+    monkeypatch.setattr(bootstrap, "ChromaStore", _Store)
+    monkeypatch.setattr(
+        bootstrap,
+        "_run_ingest",
+        lambda *, reset_collection: state.__setitem__("reset", reset_collection),
+    )
+
+    bootstrap.main(["--force"])
+
+    assert state["reset"] is True
+
+
+def test_run_ingest_uses_module_subprocess(monkeypatch):
+    import genacademy_rag.deploy.bootstrap as bootstrap
+
+    state = {}
+    monkeypatch.setattr(bootstrap.sys, "executable", "/python")
+    monkeypatch.setattr(
+        bootstrap.subprocess,
+        "run",
+        lambda cmd, cwd, check: state.update({"cmd": cmd, "cwd": cwd, "check": check}),
+    )
+
+    bootstrap._run_ingest(reset_collection=True)
+
+    assert state["cmd"] == [
+        "/python",
+        "-m",
+        "scripts.ingest_eval_corpus",
+        "--chunker",
+        "fixed",
+        "--reset-collection",
+    ]
+    assert state["cwd"] == bootstrap.REPO_ROOT
+    assert state["check"] is True
 ```
 
 - [ ] **Step 2: Run bootstrap tests and verify failure**
@@ -515,31 +569,37 @@ Create `src/genacademy_rag/deploy/bootstrap.py`:
 
 from __future__ import annotations
 
+import argparse
+import subprocess
 import sys
 
-from genacademy_rag.config import Settings
+from genacademy_rag.config import REPO_ROOT, Settings
 from genacademy_rag.core.vectorstore import ChromaStore
 
 
-def _run_ingest() -> None:
-    import scripts.ingest_eval_corpus as ingest_eval_corpus
-
-    original_argv = sys.argv
-    try:
-        sys.argv = ["ingest_eval_corpus.py", "--chunker", "fixed"]
-        ingest_eval_corpus.main()
-    finally:
-        sys.argv = original_argv
+def _run_ingest(*, reset_collection: bool = False) -> None:
+    cmd = [sys.executable, "-m", "scripts.ingest_eval_corpus", "--chunker", "fixed"]
+    if reset_collection:
+        cmd.append("--reset-collection")
+    subprocess.run(cmd, cwd=REPO_ROOT, check=True)
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--force", action="store_true")
+    args = parser.parse_args(argv)
+
     settings = Settings.from_env()
     store = ChromaStore(persist_dir=settings.chroma_dir, collection="eval")
-    if store.get_all_chunks():
+    chunks = store.get_all_chunks()
+    if chunks and not args.force:
         print("deploy bootstrap: eval collection already seeded")
         return
-    print("deploy bootstrap: seeding eval collection")
-    _run_ingest()
+    if chunks:
+        print("deploy bootstrap: forcing eval collection re-seed")
+    else:
+        print("deploy bootstrap: seeding eval collection")
+    _run_ingest(reset_collection=args.force)
 
 
 if __name__ == "__main__":
@@ -561,7 +621,7 @@ Expected: PASS.
 Run:
 
 ```bash
-git add src/genacademy_rag/deploy tests/deploy/test_bootstrap.py
+git add src/genacademy_rag/deploy tests/deploy/__init__.py tests/deploy/test_bootstrap.py
 git commit -m "feat: bootstrap deploy corpus data"
 ```
 
@@ -706,6 +766,8 @@ def test_dockerfile_runs_uvicorn_on_hf_space_port():
 
     assert "EXPOSE 7860" in dockerfile
     assert "GENACADEMY_DATA_DIR=/data" in dockerfile
+    assert "HF_HOME=/app/.cache/huggingface" in dockerfile
+    assert "SentenceTransformer('all-MiniLM-L6-v2')" in dockerfile
     assert "scripts/start_hf_space.sh" in dockerfile
 
 
@@ -722,8 +784,11 @@ def test_dockerignore_excludes_local_state():
 
     assert ".env" in dockerignore
     assert ".venv" in dockerignore
+    assert ".github/" in dockerignore
     assert "data/" in dockerignore
+    assert "docs/" in dockerignore
     assert "eval/runs/" in dockerignore
+    assert "tests/" in dockerignore
 ```
 
 - [ ] **Step 2: Run deploy-file tests and verify failure**
@@ -747,7 +812,8 @@ ENV PYTHONUNBUFFERED=1 \
     UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
     GENACADEMY_DATA_DIR=/data \
-    GENACADEMY_SECURE_COOKIES=true
+    GENACADEMY_SECURE_COOKIES=true \
+    HF_HOME=/app/.cache/huggingface
 
 WORKDIR /app
 
@@ -759,8 +825,12 @@ RUN uv sync --frozen --no-dev --no-install-project
 COPY . .
 RUN uv sync --frozen --no-dev
 
-RUN mkdir -p /data && chown -R user:user /app /data
+RUN mkdir -p /app/.cache/huggingface /data && chown -R user:user /app /data
 USER user
+
+# Pre-download the offline embedding model so first boot does not depend on a model download.
+RUN uv run --no-sync python -c \
+    "from sentence_transformers import SentenceTransformer; SentenceTransformer('all-MiniLM-L6-v2')"
 
 EXPOSE 7860
 
@@ -773,6 +843,7 @@ Create `.dockerignore`:
 
 ```text
 .git/
+.github/
 .venv/
 .pytest_cache/
 .ruff_cache/
@@ -781,9 +852,11 @@ __pycache__/
 .env
 .env.*
 data/
+docs/
 eval/runs/
 models/
-spike/_fetched/
+spike/
+tests/
 ```
 
 - [ ] **Step 5: Add HF Space README**
@@ -897,6 +970,17 @@ Docker-based Hugging Face Space serving `genacademy_rag.web.main:app` on port `7
 bootstrap checks the `eval` Chroma collection and runs `scripts/ingest_eval_corpus.py --chunker fixed`
 only when the collection is empty.
 
+The first boot fetches the pinned eval corpus from GitHub, so outbound HTTPS must be available. With
+`set -euo pipefail` in `scripts/start_hf_space.sh`, the container exits if that fetch or ingest fails.
+
+If a previous boot was killed during ingest, run:
+
+```bash
+uv run --no-sync python -m genacademy_rag.deploy.bootstrap --force
+```
+
+`--force` resets the `eval` Chroma collection before re-ingesting the pinned fixed-chunker corpus.
+
 ## Local Docker Smoke
 
 ```bash
@@ -914,6 +998,22 @@ uv run python scripts/smoke_http.py --base-url https://<namespace>-<space>.hf.sp
 The HTTP smoke checks `/login` only. It proves the container booted, templates render, sessions are
 initialized, and CSRF is present. It does not spend generation tokens.
 
+## Local HTTP Login Testing
+
+When testing browser login over plain HTTP, set `GENACADEMY_SECURE_COOKIES=false`. The Docker image
+defaults this to `true` for the HTTPS Space, and browsers will not send `Secure` cookies over local
+HTTP.
+
+## Known Restrictions
+
+- `/data` persists only when the Space has persistent storage attached. Without persistent storage,
+  SQLite users, invites, usage logs, uploads, and the Chroma collection are lost on each restart; the
+  bootstrap re-fetches and re-embeds the corpus on every cold boot.
+- Keep uvicorn single-worker. The app holds an in-process retriever snapshot, and Chroma/SQLite are
+  not a multi-process serving target in this slice.
+- The offline embedding model is baked into the Docker image under `HF_HOME=/app/.cache/huggingface`.
+  Rebuild the image when changing `GENACADEMY_EMBED_MODEL`.
+
 ## Postgres
 
 Postgres is intentionally outside this Docker/HF Space slice. It needs a separate plan because the
@@ -927,6 +1027,7 @@ Append:
 ```dotenv
 # Deployment / Hugging Face Space
 # Set GENACADEMY_SESSION_SECRET as a Space secret, not a public variable.
+# Prefer an absolute path; relative paths resolve from the process working directory.
 GENACADEMY_DATA_DIR=./data
 GENACADEMY_SECURE_COOKIES=false
 ```
@@ -963,7 +1064,8 @@ Run:
 docker build -t genacademy-rag .
 ```
 
-Expected: image builds successfully.
+Expected: image builds successfully, including the `SentenceTransformer('all-MiniLM-L6-v2')`
+pre-download layer.
 
 - [ ] **Step 3: Run local container**
 
