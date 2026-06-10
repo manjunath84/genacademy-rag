@@ -1215,7 +1215,7 @@ git commit -m "feat: answer card with badge, sources, copy/retry, thumbs, discla
 - Modify: `src/genacademy_rag/web/templates/admin_dashboard.html`
 - Modify: `tests/web/test_app.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `tests/web/test_app.py` (existing admin tests log in as
 `admin@genacademy.local`/`admin` — reuse that pattern):
@@ -1235,12 +1235,12 @@ def test_dashboard_shows_feedback_counts(monkeypatch, tmp_path):
     assert "Thumbs up" in page and "Thumbs down" in page
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `uv run pytest tests/web/test_app.py -v -k dashboard_shows_feedback`
 Expected: FAIL — "Thumbs up" not in page
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `admin_dashboard`, add feedback to the context:
 
@@ -1264,12 +1264,12 @@ opening tag to `md:grid-cols-7` and append the tiles inside it:
   </section>
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `uv run pytest tests/web -v`
 Expected: all PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/genacademy_rag/web/app.py src/genacademy_rag/web/templates/admin_dashboard.html tests/web/test_app.py

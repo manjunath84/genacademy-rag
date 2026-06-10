@@ -350,7 +350,10 @@ def create_app(
         return TEMPLATES.TemplateResponse(
             request,
             "admin_dashboard.html",
-            csrf_context(request, {"summary": summary, "rows": rows}),
+            csrf_context(
+                request,
+                {"summary": summary, "rows": rows, "feedback": datastore.feedback_summary()},
+            ),
         )
 
     @app.post("/admin/documents/delete")

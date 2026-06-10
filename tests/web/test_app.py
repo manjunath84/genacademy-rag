@@ -1174,6 +1174,25 @@ def test_dashboard_renders_usage_summary(monkeypatch, tmp_path):
     assert "<svg" in r.text
 
 
+def test_dashboard_shows_feedback_counts(monkeypatch, tmp_path):
+    c = _client(monkeypatch, tmp_path)
+    _login(c, "admin@genacademy.local", "admin")
+    ds = c.app.state.datastore
+    qid = ds.log_query(
+        user_email="m@x.com",
+        question="q?",
+        refused=False,
+        confidence=4,
+        used_fallback=False,
+        n_citations=1,
+        latency_ms=50,
+    )
+    ds.add_feedback(usage_log_id=qid, user_email="m@x.com", verdict=1)
+    page = c.get("/admin/dashboard").text
+    assert "Thumbs up" in page
+    assert "Thumbs down" in page
+
+
 def test_phase1_demo_flow(monkeypatch, tmp_path):
     c = _client(monkeypatch, tmp_path)
     _login(c, "admin@genacademy.local", "admin")
