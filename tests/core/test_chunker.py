@@ -115,6 +115,26 @@ def test_section_chunker_keeps_heading_with_markdown_table():
     assert table_chunks[0].citation.page_or_section == "section: Course > Week 6 Resources"
 
 
+def test_section_chunker_starts_new_chunk_at_heading_boundary():
+    text = (
+        "# Course\n\n"
+        "Intro paragraph.\n\n"
+        "## Week 6 Resources\n\n"
+        "| Type | Link |\n"
+        "| --- | --- |\n"
+        "| Video | RAG workshop |\n"
+    )
+
+    chunks = SectionAwareChunker(max_chars=1500, overlap=150).chunk(_doc(text))
+
+    assert len(chunks) == 2
+    assert chunks[0].text == "# Course\n\nIntro paragraph.\n"
+    assert chunks[0].citation.page_or_section == "section: Course"
+    assert chunks[1].text.startswith("## Week 6 Resources")
+    assert "| Video | RAG workshop |" in chunks[1].text
+    assert chunks[1].citation.page_or_section == "section: Course > Week 6 Resources"
+
+
 def test_section_chunker_keeps_fenced_code_block_together_when_under_limit():
     text = (
         "# Lab\n\n"

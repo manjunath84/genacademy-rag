@@ -1,5 +1,5 @@
 """Chunker seam. FixedSizeChunker = character windows with overlap, capturing exact char spans
-and 1-based line spans for citations. Char-based (≈250 tok at size 1000) respects the embedder's
+and 1-based line spans for citations. Char-based (~250 tok at size 1000) respects the embedder's
 256-token cap; token-exact/section-aware chunking is the Phase-2 eval axis."""
 from __future__ import annotations
 
@@ -18,6 +18,7 @@ class _Block:
     start: int
     end: int
     heading_path: tuple[str, ...]
+    is_heading: bool = False
 
 
 def _line_lookup(text: str) -> list[int]:
@@ -140,6 +141,12 @@ class SectionAwareChunker:
             )
 
         for block in blocks:
+            if block.is_heading and pending_start is not None and pending_end is not None:
+                emit(pending_start, pending_end, pending_path)
+                pending_start = None
+                pending_end = None
+                pending_path = ()
+
             if block.end - block.start > self.max_chars:
                 window_start = block.start
                 if pending_start is not None and pending_end is not None:
@@ -199,7 +206,14 @@ class SectionAwareChunker:
                 heading_stack.append(title)
                 start = offsets[i]
                 end = start + len(line)
-                blocks.append(_Block(start=start, end=end, heading_path=tuple(heading_stack)))
+                blocks.append(
+                    _Block(
+                        start=start,
+                        end=end,
+                        heading_path=tuple(heading_stack),
+                        is_heading=True,
+                    )
+                )
                 i += 1
                 continue
 
