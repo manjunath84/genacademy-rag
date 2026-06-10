@@ -36,12 +36,17 @@ from genacademy_rag.eval.retrieval_eval import (
 GOLD = "src/genacademy_rag/eval/gold/gold_set.yaml"
 
 
-def _config_snapshot(settings: Settings) -> dict:
+def _config_snapshot(settings: Settings, *, collection: str) -> dict:
     return {
-        "collection": "eval",
+        "collection": collection,
         "top_k": settings.top_k,
         "candidate_k": DEFAULT_CANDIDATE_K,
         "embed_model": settings.embed_model,
+        "chunker": settings.chunker,
+        "chunk_size": settings.chunk_size,
+        "chunk_overlap": settings.chunk_overlap,
+        "section_chunk_max_chars": settings.section_chunk_max_chars,
+        "section_chunk_overlap": settings.section_chunk_overlap,
         "rerank_enabled": settings.rerank_enabled,
         "rerank_model": settings.rerank_model,
         "rerank_pool": settings.rerank_pool,
@@ -54,10 +59,11 @@ def _config_snapshot(settings: Settings) -> dict:
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--json-out", type=Path)
+    ap.add_argument("--collection", default="eval")
     args = ap.parse_args()
 
     s = Settings.from_env()
-    store = ChromaStore(persist_dir=s.chroma_dir, collection="eval")
+    store = ChromaStore(persist_dir=s.chroma_dir, collection=args.collection)
     chunks = store.get_all_chunks()
     # Embeddings only — no generate() — so this runs with zero provider key.
     embedder = STEmbedder(s.embed_model)
@@ -114,7 +120,7 @@ def main():
         payload = build_retrieval_eval_payload(
             metrics=agg,
             rows=scores,
-            config=_config_snapshot(s),
+            config=_config_snapshot(s, collection=args.collection),
         )
         args.json_out.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
 

@@ -17,7 +17,7 @@ def test_eval_retrieval_json_out_includes_config_latency_and_rows(monkeypatch, t
         top_k=5,
         chunk_size=1000,
         chunk_overlap=150,
-        chunker="fixed",
+        chunker="section",
         section_chunk_max_chars=1500,
         section_chunk_overlap=150,
         chroma_dir=tmp_path / "chroma",
@@ -101,12 +101,16 @@ def test_eval_retrieval_json_out_includes_config_latency_and_rows(monkeypatch, t
     monkeypatch.setattr(eval_script, "HybridRetriever", _Retriever)
     monkeypatch.setattr(eval_script, "build_reranker", lambda s: fake_reranker, raising=False)
     monkeypatch.setattr(eval_script, "load_gold_set", lambda path: [question])
-    monkeypatch.setattr(sys, "argv", ["eval_retrieval.py", "--json-out", str(out)])
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["eval_retrieval.py", "--collection", "eval_section", "--json-out", str(out)],
+    )
 
     eval_script.main()
 
     payload = json.loads(out.read_text())
-    assert state["collection"] == "eval"
+    assert state["collection"] == "eval_section"
     assert state["top_k"] == 5
     assert state["candidate_k"] == 20
     assert state["reranker"] is fake_reranker
@@ -120,6 +124,10 @@ def test_eval_retrieval_json_out_includes_config_latency_and_rows(monkeypatch, t
     assert payload["config"]["rerank_enabled"] is True
     assert payload["config"]["rerank_device"] == "cpu"
     assert payload["config"]["candidate_k"] == 20
+    assert payload["config"]["collection"] == "eval_section"
+    assert payload["config"]["chunker"] == "section"
+    assert payload["config"]["section_chunk_max_chars"] == 1500
+    assert payload["config"]["section_chunk_overlap"] == 150
     assert payload["latency"]["retrieval_ms_mean"] >= 0.0
     assert payload["questions"][0]["retrieval_ms"] >= 0.0
     assert payload["questions"][0]["max_cosine"] == 0.9
