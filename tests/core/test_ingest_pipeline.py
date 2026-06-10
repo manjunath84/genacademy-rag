@@ -117,3 +117,48 @@ def test_prepared_ingest_embeds_before_persistence(fake_provider):
         ("add_document", "pdf/abc", 1),
         ("add_chunks_meta", ["pdf/abc::0"]),
     ]
+
+
+def test_commit_rolls_back_vectors_when_ledger_write_fails(fake_provider):
+    """Upsert-first ordering means a ledger failure would orphan vectors with no admin
+    row — and the reindex filter keeps ledger-less chunks (eval seeds), so orphans
+    would resurface. The compensating delete_doc prevents that (codex review P2)."""
+    calls = []
+
+    class Store:
+        def upsert(self, chunks, embeddings):
+            calls.append(("upsert", [c.chunk_id for c in chunks]))
+
+        def delete_doc(self, doc_id):
+            calls.append(("delete_doc", doc_id))
+
+    class FailingDatastore:
+        def add_document(self, **kwargs):
+            raise RuntimeError("sqlite locked")
+
+        def add_chunks_meta(self, chunks):
+            raise AssertionError("unreachable")
+
+    doc = Document(
+        doc_id="pdf/abc",
+        title="notes.pdf",
+        source_type="pdf",
+        text="Gen Academy notes about retrieval.",
+        filename="notes.pdf",
+        uploaded_by="admin@genacademy.local",
+    )
+    pipe = IngestPipeline(
+        chunker=FixedSizeChunker(chunk_size=50, overlap=5),
+        provider=fake_provider,
+        store=Store(),
+        datastore=FailingDatastore(),
+    )
+
+    try:
+        pipe.commit(pipe.prepare([doc]))
+    except RuntimeError as exc:
+        assert "sqlite locked" in str(exc)   # original error surfaces, not the rollback
+    else:
+        raise AssertionError("expected RuntimeError")
+
+    assert calls == [("upsert", ["pdf/abc::0"]), ("delete_doc", "pdf/abc")]

@@ -2,10 +2,13 @@
 QueryPipeline (online): question → graph → {answer, citations}. Both pure."""
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 
 from genacademy_rag.core.graph import build_graph
 from genacademy_rag.core.types import Chunk, Citation, Document
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -37,23 +40,35 @@ class IngestPipeline:
         for item in prepared:
             doc = item.doc
             # Vector store first: if a (possibly remote) upsert fails, no SQLite row exists,
-            # so the admin list never shows a document that is not actually searchable. The
-            # reverse failure (local SQLite after a successful upsert) is far rarer and only
-            # orphans vectors that the snapshot-built corpus never serves.
+            # so the admin list never shows a document that is not actually searchable.
             self._store.upsert(item.chunks, item.embeddings)
-            self._datastore.add_document(
-                doc_id=doc.doc_id,
-                title=doc.title,
-                source_type=doc.source_type,
-                repo=doc.repo,
-                file_path=doc.file_path,
-                commit_hash=doc.commit_hash,
-                filename=doc.filename,
-                uploaded_by=doc.uploaded_by,
-                stored_path=doc.stored_path,
-                n_chunks=len(item.chunks),
-            )
-            self._datastore.add_chunks_meta(item.chunks)
+            try:
+                self._datastore.add_document(
+                    doc_id=doc.doc_id,
+                    title=doc.title,
+                    source_type=doc.source_type,
+                    repo=doc.repo,
+                    file_path=doc.file_path,
+                    commit_hash=doc.commit_hash,
+                    filename=doc.filename,
+                    uploaded_by=doc.uploaded_by,
+                    stored_path=doc.stored_path,
+                    n_chunks=len(item.chunks),
+                )
+                self._datastore.add_chunks_meta(item.chunks)
+            except Exception:
+                # Compensate: vectors without a ledger row are invisible to the admin
+                # list yet would be kept by the reindex filter (which deliberately
+                # retains ledger-less eval-seed docs) — roll them back, then surface
+                # the original ledger error.
+                try:
+                    self._store.delete_doc(doc.doc_id)
+                except Exception:
+                    logger.exception(
+                        "vector rollback for %s failed after ledger write error; "
+                        "orphaned vectors may resurface on reindex", doc.doc_id,
+                    )
+                raise
             total += len(item.chunks)
         return total
 
