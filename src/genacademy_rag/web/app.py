@@ -333,15 +333,16 @@ def build_default_app() -> FastAPI:
     from genacademy_rag.core.providers import build_provider
     from genacademy_rag.core.reranker import build_reranker
     from genacademy_rag.core.retriever import DEFAULT_CANDIDATE_K, HybridRetriever
-    from genacademy_rag.core.vectorstore import ChromaStore
+    from genacademy_rag.core.vectorstore import ChromaStore, build_vectorstore
 
     s = Settings.from_env()
     provider = build_provider(s)
-    # eval collection: pinned corpus used by eval scripts — NEVER written to by uploads
+    # eval collection: pinned corpus used by eval scripts — NEVER written to by uploads.
+    # Always local Chroma: the deterministic eval must not depend on a remote store.
     eval_store = ChromaStore(persist_dir=s.chroma_dir, collection="eval")
     chunks = eval_store.get_all_chunks()
-    # serving collection: grows with admin uploads
-    serving = ChromaStore(persist_dir=s.chroma_dir, collection="serving")
+    # serving collection: grows with admin uploads; swappable via GENACADEMY_VECTORSTORE.
+    serving = build_vectorstore(s, collection="serving")
     if not serving.get_all_chunks():    # seed once from the pinned eval chunks
         serving.upsert(chunks, provider.embed([c.text for c in chunks]))
     retriever = HybridRetriever(

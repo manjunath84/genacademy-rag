@@ -36,6 +36,41 @@ def test_rerank_defaults_are_disabled_and_offline(monkeypatch):
     assert s.rerank_cache_dir is None
 
 
+def test_vectorstore_defaults_to_chroma_with_empty_pinecone_settings(monkeypatch):
+    for name in (
+        "GENACADEMY_VECTORSTORE",
+        "PINECONE_API_KEY",
+        "GENACADEMY_PINECONE_INDEX",
+        "GENACADEMY_PINECONE_CLOUD",
+        "GENACADEMY_PINECONE_REGION",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+    s = Settings.from_env()
+
+    assert s.vectorstore == "chroma"
+    assert s.pinecone_api_key == ""
+    assert s.pinecone_index == "genacademy-rag"
+    assert s.pinecone_cloud == "aws"
+    assert s.pinecone_region == "us-east-1"
+
+
+def test_vectorstore_env_settings_parse(monkeypatch):
+    monkeypatch.setenv("GENACADEMY_VECTORSTORE", "pinecone")
+    monkeypatch.setenv("PINECONE_API_KEY", "pk-test")
+    monkeypatch.setenv("GENACADEMY_PINECONE_INDEX", "custom-index")
+    monkeypatch.setenv("GENACADEMY_PINECONE_CLOUD", "gcp")
+    monkeypatch.setenv("GENACADEMY_PINECONE_REGION", "us-central1")
+
+    s = Settings.from_env()
+
+    assert s.vectorstore == "pinecone"
+    assert s.pinecone_api_key == "pk-test"
+    assert s.pinecone_index == "custom-index"
+    assert s.pinecone_cloud == "gcp"
+    assert s.pinecone_region == "us-central1"
+
+
 def test_rerank_env_settings_parse(monkeypatch, tmp_path):
     monkeypatch.setenv("GENACADEMY_RERANK_ENABLED", "true")
     monkeypatch.setenv("GENACADEMY_RERANK_MODEL", "custom/reranker")

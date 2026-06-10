@@ -67,6 +67,12 @@ class Settings:
     rerank_pool: int
     rerank_device: str | None
     rerank_cache_dir: Path | None
+    # Vector store preset (Phase 2). Defaults keep the chroma path identical with no env set.
+    vectorstore: str = "chroma"
+    pinecone_api_key: str = ""
+    pinecone_index: str = "genacademy-rag"
+    pinecone_cloud: str = "aws"
+    pinecone_region: str = "us-east-1"
 
     def __post_init__(self):
         if self.session_secret == "dev-only-change-me":
@@ -116,4 +122,9 @@ class Settings:
             rerank_pool=int(os.environ.get("GENACADEMY_RERANK_POOL", "0")),
             rerank_device=os.environ.get("GENACADEMY_RERANK_DEVICE") or None,
             rerank_cache_dir=_env_path("GENACADEMY_RERANK_CACHE_DIR"),
+            vectorstore=os.environ.get("GENACADEMY_VECTORSTORE", "chroma"),
+            pinecone_api_key=os.environ.get("PINECONE_API_KEY", ""),
+            pinecone_index=os.environ.get("GENACADEMY_PINECONE_INDEX", "genacademy-rag"),
+            pinecone_cloud=os.environ.get("GENACADEMY_PINECONE_CLOUD", "aws"),
+            pinecone_region=os.environ.get("GENACADEMY_PINECONE_REGION", "us-east-1"),
         )
