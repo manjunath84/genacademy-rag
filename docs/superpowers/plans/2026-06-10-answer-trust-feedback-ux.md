@@ -482,7 +482,7 @@ git commit -m "feat: overview-format answer prompt, max_tokens 800"
 - Modify: `src/genacademy_rag/core/pipeline.py:79-105`
 - Modify: `tests/core/test_query_pipeline.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/core/test_query_pipeline.py` (reuse the file's existing retriever/provider fixtures if equivalent ones exist; otherwise these are self-contained):
 
@@ -535,12 +535,12 @@ def test_refused_result_has_empty_sources():
     assert result.sources == []
 ```
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `uv run pytest tests/core/test_query_pipeline.py -v -k sources`
 Expected: FAIL — `QueryResult` has no attribute `sources`
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `src/genacademy_rag/core/pipeline.py`: add imports and extend `QueryResult` + `answer()`:
 
@@ -579,12 +579,12 @@ class QueryResult:
         )
 ```
 
-- [ ] **Step 4: Run to verify everything passes**
+- [x] **Step 4: Run to verify everything passes**
 
 Run: `uv run pytest tests/core/test_query_pipeline.py tests/eval -v`
 Expected: all PASS (eval tests prove the `citations` contract is untouched)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/genacademy_rag/core/pipeline.py tests/core/test_query_pipeline.py
