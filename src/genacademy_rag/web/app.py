@@ -20,11 +20,42 @@ from starlette.middleware.sessions import SessionMiddleware
 from genacademy_rag.config import Settings, data_dir_from_env
 from genacademy_rag.core.pipeline import QueryPipeline
 from genacademy_rag.core.security import hash_password
+from genacademy_rag.core.types import Chunk
 from genacademy_rag.data.datastore import SQLiteDatastore
 from genacademy_rag.web.auth import authenticate
 
 TEMPLATES = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 logger = logging.getLogger(__name__)
+
+
+def _filter_serving_chunks_for_datastore(chunks: list[Chunk], datastore) -> list[Chunk]:
+    """Drop serving vectors for uploaded docs that are not visible in SQLite.
+
+    Pinecone persists independently of Hugging Face `/data`. Without persistent storage,
+    SQLite/upload files can reset while the Pinecone namespace still contains old uploaded
+    vectors. Keep ledger-less GitHub seed chunks, but never serve orphaned or deleted uploads.
+    """
+    visible: list[Chunk] = []
+    doc_cache: dict[str, dict | None] = {}
+    dropped = 0
+    for chunk in chunks:
+        citation = chunk.citation
+        if citation.repo or citation.source_type == "github":
+            visible.append(chunk)
+            continue
+        if chunk.doc_id not in doc_cache:
+            doc_cache[chunk.doc_id] = datastore.get_document(chunk.doc_id)
+        doc = doc_cache[chunk.doc_id]
+        if doc and doc.get("status") != "deleted":
+            visible.append(chunk)
+        else:
+            dropped += 1
+    if dropped:
+        logger.warning(
+            "serving corpus: dropped %d uploaded chunks missing from the active datastore",
+            dropped,
+        )
+    return visible
 
 
 def create_app(
@@ -335,16 +366,13 @@ def create_app(
         if serving_store is not None:
             def mutation():
                 # Reindex is the one deliberate remote re-read (recovery path for chunks
-                # missing from memory). Filter it against the datastore's deletion ledger
-                # so orphaned vectors from a lagged delete can never resurrect a deleted
-                # doc, and log the corpus-size change as the partial-read signal.
-                deleted_ids = {
-                    d["id"] for d in datastore.list_documents() if d["status"] == "deleted"
-                }
+                # missing from memory). Filter it against the datastore ledger so lagged
+                # deletes or Pinecone vectors orphaned by an HF /data reset are not served.
                 before = len(retriever.snapshot_chunks())
-                chunks = [
-                    c for c in serving_store.get_all_chunks() if c.doc_id not in deleted_ids
-                ]
+                chunks = _filter_serving_chunks_for_datastore(
+                    serving_store.get_all_chunks(),
+                    datastore,
+                )
                 logger.info("reindex: corpus %d -> %d chunks", before, len(chunks))
                 return chunks
 
@@ -365,13 +393,14 @@ def build_default_app() -> FastAPI:
 
     s = Settings.from_env()
     provider = build_provider(s)
+    datastore = SQLiteDatastore(s.sqlite_path)
     # eval collection: pinned corpus used by eval scripts — NEVER written to by uploads.
     # Always local Chroma: the deterministic eval must not depend on a remote store.
     eval_store = ChromaStore(persist_dir=s.chroma_dir, collection="eval")
     chunks = eval_store.get_all_chunks()
     # serving collection: grows with admin uploads; swappable via GENACADEMY_VECTORSTORE.
     serving = build_vectorstore(s, collection="serving")
-    serving_chunks = serving.get_all_chunks()
+    serving_chunks = _filter_serving_chunks_for_datastore(serving.get_all_chunks(), datastore)
     if not serving_chunks:              # seed once from the pinned eval chunks
         serving.upsert(chunks, provider.embed([c.text for c in chunks]))
         # Build the index from the local seed list, not a re-read: a remote store
@@ -389,7 +418,6 @@ def build_default_app() -> FastAPI:
         reranker=build_reranker(s),
         rerank_pool=s.rerank_pool,
     )
-    datastore = SQLiteDatastore(s.sqlite_path)
     pipe = IngestPipeline(
         chunker=build_chunker(
             s.chunker,

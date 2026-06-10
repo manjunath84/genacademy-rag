@@ -24,8 +24,10 @@ In Hugging Face Space settings, confirm:
 ```text
 GENACADEMY_PROVIDER=nebius
 NEBIUS_BASE_URL=https://api.tokenfactory.nebius.com/v1/
-GENACADEMY_VECTORSTORE=chroma
+GENACADEMY_VECTORSTORE=pinecone
+GENACADEMY_PINECONE_INDEX=genacademy-rag
 GENACADEMY_EMBEDDINGS=local
+GENACADEMY_EMBED_DIM=384
 GENACADEMY_RERANK_ENABLED=false
 GENACADEMY_SECURE_COOKIES=true
 ```
@@ -134,13 +136,13 @@ src/genacademy_rag/deploy/
 
 Say:
 
-> The project separates pure retrieval and generation logic from the web layer. Retrieval quality is measured with a pinned 15-question eval set using recall, precision, MRR, and failure analysis. The live deploy uses Nebius for generation through the OpenAI-compatible provider seam.
+> The project separates pure retrieval and generation logic from the web layer. Retrieval quality is measured with a pinned 15-question eval set using recall, precision, MRR, and failure analysis. The live deploy uses Nebius for generation and Pinecone for the serving vector store through clean provider and vector-store seams.
 
 ### 4:20-4:50 - Close
 
 Say:
 
-> The main design choice was to be scale-aware without overbuilding: local embeddings and Chroma for the demo, clean seams for provider/vector-store swaps, and a Docker/Hugging Face deploy that preserves the same app path.
+> The main design choice was to be scale-aware without overbuilding: local embeddings, Pinecone for the live serving corpus, local Chroma for deterministic eval, and a Docker/Hugging Face deploy that preserves the same app path.
 
 End by showing:
 
@@ -151,6 +153,8 @@ https://Manjunath84-genacademy-rag.hf.space
 ## If Something Goes Wrong
 
 - If the answer request errors, check the Hugging Face logs for `NEBIUS_API_KEY` or `NEBIUS_MODEL`.
+- If startup fails before the app runs, check `PINECONE_API_KEY` and the Pinecone index dimension
+  (`384` for the local embedder).
 - If login fails after a restart, remember that `/data` is ephemeral without persistent storage; the seeded demo users should be recreated at boot.
 - If the Space is waking from sleep, wait until it shows **Running**, then rerun the smoke command.
 - If the demo is running long, skip the admin section and keep the cited-answer/refusal/eval sections.
