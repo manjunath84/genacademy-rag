@@ -29,3 +29,12 @@ def test_dockerignore_excludes_local_state():
     assert "docs/" in dockerignore
     assert "eval/runs/" in dockerignore
     assert "tests/" in dockerignore
+
+
+def test_env_example_is_docker_env_file_compatible():
+    for line in Path(".env.example").read_text().splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in stripped:
+            continue
+        value = stripped.split("=", 1)[1]
+        assert "#" not in value, f"inline comment is not Docker --env-file compatible: {line}"

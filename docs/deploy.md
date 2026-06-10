@@ -49,6 +49,9 @@ docker run --rm -p 7860:7860 --env-file .env genacademy-rag
 uv run python scripts/smoke_http.py --base-url http://127.0.0.1:7860
 ```
 
+Docker `--env-file` entries must be plain `KEY=value` lines. Keep comments on separate lines; Docker
+does not strip inline comments after values.
+
 ## Live Space Smoke
 
 ```bash
