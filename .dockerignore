@@ -1,0 +1,17 @@
+.git/
+.github/
+.claude/
+.kimchi/
+.venv/
+.pytest_cache/
+.ruff_cache/
+__pycache__/
+*.pyc
+.env
+.env.*
+data/
+docs/
+eval/runs/
+models/
+spike/
+tests/
