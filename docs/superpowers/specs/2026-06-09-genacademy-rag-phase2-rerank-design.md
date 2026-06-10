@@ -1,7 +1,7 @@
 # GenAcademy RAG - Phase 2 Cross-Encoder Rerank Design
 
 **Date:** 2026-06-09
-**Status:** Phase A design complete - pending independent review before any implementation plan
+**Status:** Phase A design reviewed; implementation completed in PR #3
 **Builds on:** Phase 0 + Phase 1 merged on `main` (branch:
 `feat/genacademy-rag-phase2-rerank`)
 **Source of scope:** `specs/roadmap.md` Phase 2, `docs/design.md` section 6, current

@@ -4,8 +4,8 @@
 written as **Problem -> Options -> Tradeoffs -> Decision -> How an interviewer probes it**. The
 implementation spec is `docs/superpowers/specs/2026-06-09-genacademy-rag-phase2-rerank-design.md`.
 
-**Status:** design written, pending independent review. No implementation plan or code should happen
-until the review gate approves the design.
+**Status:** implemented in PR #3 after independent design review and implementation-plan approval;
+the measured eval delta is committed in `eval/phase2-rerank-delta.md`.
 
 **Scope:** cross-encoder reranking only. Section-aware chunking, Pinecone, Nebius embeddings, deploy,
 and web/product changes are separate Phase 2 items.
