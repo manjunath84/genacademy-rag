@@ -4,6 +4,143 @@
 
 Docker-based Hugging Face Space serving `genacademy_rag.web.main:app` on port `7860`.
 
+## Beginner Hugging Face Space Setup
+
+Use this path for the first Week 2 course deployment, especially if you do not have a Hugging Face
+Pro plan.
+
+### 1. Create The Space
+
+1. Go to <https://huggingface.co/spaces>.
+2. Click **Create new Space**.
+3. Fill the form:
+   - **Space name:** `genacademy-rag`
+   - **License:** any course-appropriate license, or leave the default if unsure
+   - **SDK:** `Docker`
+   - **Visibility:** `Public` if you need to submit a link; otherwise `Private`
+   - **Hardware:** `CPU Basic` / free CPU
+   - **Storage bucket / persistent storage:** none for the first deploy
+   - **Dev Mode:** disabled
+4. Click **Create Space**.
+
+Dev Mode is for debugging inside the Space container and is not needed for a normal Git-based
+deployment. Persistent storage is optional and may require a paid plan. Without persistent storage,
+`/data` is wiped on restart; this app will re-fetch and re-ingest the eval corpus during cold boot,
+which is slower but acceptable for the first deploy.
+
+### 2. Add Secrets
+
+In the Space page, go to **Settings -> Variables and secrets**.
+
+Add these as **Secrets**:
+
+```text
+GENACADEMY_SESSION_SECRET=<generated-secret>
+NEBIUS_API_KEY=<your-nebius-api-key>
+```
+
+Generate the session secret locally:
+
+```bash
+openssl rand -hex 32
+```
+
+Do not paste API keys or secrets into chat, docs, commits, or public issue/PR comments.
+
+### 3. Add Variables
+
+Add these as **Variables**, not secrets:
+
+```text
+GENACADEMY_PROVIDER=nebius
+NEBIUS_BASE_URL=https://api.studio.nebius.com/v1
+NEBIUS_MODEL=<your-validated-nebius-model>
+GENACADEMY_DATA_DIR=/data
+GENACADEMY_SECURE_COOKIES=true
+GENACADEMY_VECTORSTORE=chroma
+GENACADEMY_EMBEDDINGS=local
+GENACADEMY_RERANK_ENABLED=false
+```
+
+Use the same `NEBIUS_MODEL` you validated locally or were given for the course. Do not set
+`GENACADEMY_VECTORSTORE=pinecone` for the first deployment; keep the first deploy simple with Chroma.
+
+### 4. Push Code To The Space
+
+From the local repo:
+
+```bash
+cd /Users/manjunathans/projects/GenAcademy/Week2-RAG_ContextEngineering/genacademy-rag
+git checkout main
+git pull --ff-only origin main
+```
+
+Add the Hugging Face Space as a remote:
+
+```bash
+git remote add hf https://huggingface.co/spaces/<your-hf-username>/genacademy-rag
+```
+
+Push `main` to the Space:
+
+```bash
+git push hf main:main
+```
+
+If this is a brand-new empty Space and Git rejects because the Space already has its own initial
+README, use:
+
+```bash
+git push --force-with-lease hf main:main
+```
+
+Only use that force command for a fresh Space you just created.
+
+### 5. Watch Build Logs
+
+On the Hugging Face Space page, open the **Logs** tab.
+
+Expected signs:
+
+```text
+deploy bootstrap: seeding eval collection
+ingested 4 docs -> 53 chunks into /data/chroma collection=eval
+Uvicorn running on http://0.0.0.0:7860
+```
+
+The first build can take a while because Docker installs dependencies and downloads the embedding
+model.
+
+### 6. Smoke Test
+
+Once the Space says it is running, copy its app URL. It usually looks like:
+
+```text
+https://<your-hf-username>-genacademy-rag.hf.space
+```
+
+Then run locally:
+
+```bash
+uv run python scripts/smoke_http.py --base-url https://<your-hf-username>-genacademy-rag.hf.space
+```
+
+Expected:
+
+```text
+HTTP SMOKE OK  base_url=https://...
+```
+
+### 7. If It Fails
+
+- `GENACADEMY_SESSION_SECRET` error: add the secret in Space settings and restart/rebuild.
+- Nebius auth/model error: check `NEBIUS_API_KEY` and `NEBIUS_MODEL`.
+- App keeps rebuilding slowly: normal for the first Docker build.
+- Data disappears after restart: expected without persistent storage; the app re-seeds the eval
+  corpus on boot.
+
+After the smoke test passes, the next task is live login/query testing.
+
 ## Required Space Secrets
 
 | Name | Purpose |
