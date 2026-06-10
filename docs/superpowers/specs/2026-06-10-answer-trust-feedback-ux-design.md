@@ -40,7 +40,10 @@ citation-disciplined pipeline:
 - "Sources (N)": merged citations as `<details>` rows. Summary line =
   `<a href={github_url}>title · lines a–b ↗</a> — repo @ shortsha`; expanded body =
   snippet (~240 chars, monospace, left-rule). Uploaded files (pdf/docx/pptx): title +
-  page/section label, no link.
+  page/section label, linked to `GET /documents/{doc_id}/file` (see §4.3) — PDFs render
+  inline, PPTX/DOCX download. Covers future admin uploads automatically (same `doc_id`
+  chain). Only when no stored file exists (e.g. tombstoned doc) does the row fall back
+  to unlinked title + snippet.
 - Footer disclaimer (muted): *"AI-generated from course materials — it can make
   mistakes. Check the sources above."*
 
@@ -63,7 +66,7 @@ bullets) replacing "Be concise". `max_tokens` 512 → 800. No node/edge changes.
 @dataclass(frozen=True)
 class SourceView:
     title: str
-    url: str | None        # None for uploaded files
+    url: str | None        # GitHub pinned-commit URL, /documents/{doc_id}/file for uploads, None only when neither exists (e.g. tombstoned)
     range_label: str       # "lines 41–70" | "page 3"
     meta_label: str        # "awesome-agentic-ai-resources @ 5dfb869" | "uploaded document"
     snippet: str           # ~240 chars of the first contributing chunk
@@ -124,6 +127,13 @@ CREATE TABLE IF NOT EXISTS feedback (
   `query_id`. If `log_query` failed (already best-effort), `query_id` is `None` and the
   template hides the thumbs.
 - **Admin dashboard** — 👍/👎 totals from `feedback_summary()` next to existing stats.
+- **`GET /documents/{doc_id}/file`** — requires login (members already see this content
+  as chunks, so serving the original leaks nothing new). Looks the document up in the
+  datastore by `doc_id` and streams `stored_path` — never serves caller-supplied paths.
+  `Content-Disposition: inline` for PDF, attachment for PPTX/DOCX. 404 when the doc is
+  unknown, tombstoned, or has no `stored_path` (GitHub-sourced docs use their GitHub
+  link instead and never hit this route). `SourceView.url` for uploaded files is built
+  by `merge_citations` as `/documents/{doc_id}/file`.
 
 ### 4.4 Error handling
 
@@ -149,6 +159,9 @@ CREATE TABLE IF NOT EXISTS feedback (
   - Web: `/feedback` CSRF required, login required, bad verdict rejected, best-effort
     on datastore failure; thumbs hidden when `query_id` is None; chat template renders
     sources/badge/disclaimer.
+  - `/documents/{doc_id}/file`: login required, serves stored upload with correct
+    disposition, 404 on unknown/tombstoned/no-stored-path doc, path comes only from the
+    datastore lookup.
 - Standard gates: `ruff` + `pytest` green; builder ≠ reviewer review before merge.
 
 ## 6. Constitution updates
