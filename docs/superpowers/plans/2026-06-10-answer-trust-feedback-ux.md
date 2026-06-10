@@ -96,7 +96,7 @@ git commit -m "feat: add confidence_bucket presentation helper"
 - Modify: `src/genacademy_rag/core/sources.py`
 - Modify: `tests/core/test_sources.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/core/test_sources.py`:
 
@@ -140,12 +140,12 @@ def test_github_url_returns_none_for_uploaded_file():
     assert github_url(cit) is None
 ```
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `uv run pytest tests/core/test_sources.py -v`
 Expected: FAIL — `ImportError: cannot import name 'github_url'`
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 Append to `src/genacademy_rag/core/sources.py`:
 
@@ -163,12 +163,12 @@ def github_url(citation: Citation) -> str | None:
     return url
 ```
 
-- [ ] **Step 4: Run to verify they pass**
+- [x] **Step 4: Run to verify they pass**
 
 Run: `uv run pytest tests/core/test_sources.py -v`
 Expected: 4 PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/genacademy_rag/core/sources.py tests/core/test_sources.py
