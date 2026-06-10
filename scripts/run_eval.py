@@ -8,7 +8,7 @@ from pathlib import Path
 
 from genacademy_rag.config import Settings
 from genacademy_rag.core.pipeline import QueryPipeline
-from genacademy_rag.core.providers import build_provider
+from genacademy_rag.core.providers import OpenAICompatProvider, STEmbedder
 from genacademy_rag.core.reranker import build_reranker
 from genacademy_rag.core.retriever import DEFAULT_CANDIDATE_K, HybridRetriever
 from genacademy_rag.core.vectorstore import ChromaStore
@@ -26,12 +26,13 @@ def main():
     args = ap.parse_args()
 
     s = Settings.from_env()
-    provider = build_provider(s)
+    embedder = STEmbedder(s.embed_model)
+    provider = OpenAICompatProvider(s.gen_base_url, s.gen_api_key, s.gen_model)
     store = ChromaStore(persist_dir=s.chroma_dir, collection="eval")
     chunks = store.get_all_chunks()                  # public accessor, not store._col
     retriever = HybridRetriever(
         store=store,
-        provider=provider,
+        provider=embedder,
         all_chunks=chunks,
         top_k=s.top_k,
         candidate_k=DEFAULT_CANDIDATE_K,

@@ -24,6 +24,7 @@ PROVIDER_PRESETS: dict[str, tuple[str, str, str, str]] = {
     "openai": ("OPENAI_BASE_URL", "https://api.openai.com/v1", "OPENAI_API_KEY", "OPENAI_MODEL"),
     "gemma": ("GEMMA_BASE_URL", "http://127.0.0.1:8085/v1", "GEMMA_API_KEY", "GEMMA_MODEL"),
 }
+NEBIUS_EMBED_MODEL_DEFAULT = "Qwen/Qwen3-Embedding-8B"
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR = REPO_ROOT / "data"
@@ -82,6 +83,11 @@ class Settings:
     pinecone_index: str = "genacademy-rag"
     pinecone_cloud: str = "aws"
     pinecone_region: str = "us-east-1"
+    embeddings: str = "local"
+    nebius_base_url: str = "https://api.studio.nebius.com/v1"
+    nebius_api_key: str = ""
+    nebius_embed_model: str = NEBIUS_EMBED_MODEL_DEFAULT
+    embed_dim: int = 384
 
     def __post_init__(self):
         if self.session_secret == "dev-only-change-me":
@@ -103,6 +109,14 @@ class Settings:
             raise ValueError(
                 f"unknown GENACADEMY_VECTORSTORE={vectorstore!r}; one of ['chroma', 'pinecone']"
             )
+        embeddings = os.environ.get("GENACADEMY_EMBEDDINGS", "local")
+        if embeddings not in ("local", "nebius"):
+            raise ValueError(
+                f"unknown GENACADEMY_EMBEDDINGS={embeddings!r}; one of ['local', 'nebius']"
+            )
+        nebius_base_var, nebius_base_default, nebius_key_var, _nebius_model_var = (
+            PROVIDER_PRESETS["nebius"]
+        )
         return cls(
             provider=provider,
             gen_base_url=os.environ.get(base_var, base_default),
@@ -141,4 +155,12 @@ class Settings:
             pinecone_index=os.environ.get("GENACADEMY_PINECONE_INDEX", "genacademy-rag"),
             pinecone_cloud=os.environ.get("GENACADEMY_PINECONE_CLOUD", "aws"),
             pinecone_region=os.environ.get("GENACADEMY_PINECONE_REGION", "us-east-1"),
+            embeddings=embeddings,
+            nebius_base_url=os.environ.get(nebius_base_var, nebius_base_default),
+            nebius_api_key=os.environ.get(nebius_key_var, ""),
+            nebius_embed_model=os.environ.get(
+                "NEBIUS_EMBED_MODEL",
+                NEBIUS_EMBED_MODEL_DEFAULT,
+            ),
+            embed_dim=int(os.environ.get("GENACADEMY_EMBED_DIM", "384")),
         )

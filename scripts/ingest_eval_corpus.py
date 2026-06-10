@@ -46,6 +46,11 @@ def main():
             "refusing to ingest collection='eval' with chunker="
             f"{chunker_name!r}; use --collection for alternate chunker experiments"
         )
+    if args.collection == "eval" and s.embeddings != "local":
+        raise SystemExit(
+            "refusing to ingest collection='eval' with embeddings="
+            f"{s.embeddings!r}; use --collection for alternate embedding experiments"
+        )
     if args.collection != "eval" and args.sqlite_path is None:
         sqlite_path = s.sqlite_path.with_name(f"{s.sqlite_path.stem}-{args.collection}.sqlite")
     if args.reset_collection:
