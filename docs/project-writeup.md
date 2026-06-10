@@ -71,15 +71,84 @@ The editable Draw.io source is [architecture.drawio](diagrams/architecture.drawi
 
 ## Prompts Used While Building
 
-The build used agent-assisted prompts for planning, implementation, and review. The most important prompt categories were:
+All prompts in this section are **reconstructed** — they are faithful paraphrases of what was asked based on the documented build history (git log, plan files, memory, and review artifacts). I do not have access to the raw transcript to quote verbatim. Each is labeled with its category and what it produced.
 
-- **Architecture planning:** asked for a phase-based RAG plan that protected the graded spine before adding product or deploy features.
-- **Independent reviews:** asked separate agents to review the Docker/Hugging Face deploy plan and challenge assumptions against the actual codebase.
-- **Code review follow-up:** asked reviewers to identify blocking issues, then fixed only the findings that held up against the code.
-- **Deployment support:** asked for step-by-step Hugging Face Space setup, variable/secrets guidance, and live smoke validation.
-- **Final packaging:** asked for a demo script, deployment instructions, and a concise project write-up.
+---
 
-The most useful review prompts were the ones that required line-level evidence from the codebase instead of general opinions.
+### 1. Planning / Architecture
+
+**Prompt (reconstructed):**
+> I'm building a course-material RAG assistant for the GenAcademy Week 2 submission. Requirements: answers with line-level citations, hard refusal path when out-of-corpus, hybrid retrieval (dense + BM25 + RRF), Nebius as the mandatory model call for generation, and a 15-question deterministic eval that must be green before I add any product or deploy features. The eval corpus is two-tier: a frozen commit-pinned snapshot for graded eval, and a growing production corpus for the live app. Help me design the architecture and write a phase breakdown.
+
+**Produced:** `docs/design.md` — a full design with the two-tier corpus model, pluggable provider/retriever/chunker seams, pure core / thin view constraint, and Phase 0/1/2 phase definitions. The design established that "eval spine first" was the invariant, not optional.
+
+---
+
+**Prompt (reconstructed):**
+> Before writing an implementation plan, I need to de-risk three unknowns: (1) GitHub fetch + commit pinning for the eval corpus, (2) parsing a 19.3 MB PDF guidebook without OCR, and (3) Nebius JSON mode for the refusal grader. Run the spike and report findings I can bake into the plan.
+
+**Produced:** `docs/spike-findings.md` — confirmed commit SHAs for both eval repos, pypdf parsing was clean (printable ratio 0.994, no OCR needed), `all-MiniLM-L6-v2` dim=384, JSON mode working on open Llama via OpenRouter (~3.75 s cold, 10/10 no throttling). All three risks cleared, removing blockers before any code was written.
+
+---
+
+**Prompt (reconstructed):**
+> I have a reviewed design at `docs/design.md` and spike findings at `docs/spike-findings.md`. Write a Phase 0 implementation plan with 17 TDD tasks ordered bottom-up: scaffold → types → provider → chunker → loaders → vectorstore → retriever → grader → LangGraph graph → datastore → ingest → query → gold set → retrieval eval → faithfulness → report → web → PDF/upload. Every RAG + data task must be unit-testable offline against a `FakeModelProvider` seam. Use `docs/architecture-decisions.md` for reasoning only — do not implement from it.
+
+**Produced:** `docs/superpowers/plans/2026-06-08-genacademy-rag-phase0.md` — a 17-task implementation plan with explicit non-negotiables, spike facts baked in, and Phase 1–2 as a forward pointer only. This plan was then reviewed by two independent agents (Antigravity + Kimchi) before any code was written.
+
+---
+
+### 2. Implementation
+
+**Prompt (reconstructed):**
+> The Phase 0 plan has been reviewed by two independent agents and all findings are folded in. Execute it using subagent-driven development. Run tasks bottom-up, run `ruff` and `pytest` after each task, and gate each task on green before moving to the next. Do not start Phase 1 until the eval report is green.
+
+**Produced:** Phase 0 implementation — 50 tests, ruff clean, eval `recall@k=0.67 / precision@k=0.22 / MRR=0.55 / faithfulness=58%`. Mandatory Nebius call satisfied. PR #1 merged.
+
+---
+
+**Prompt (reconstructed):**
+> The Phase 0 PR review found a real refusal-bypass bug: `bool("false") == True` in Python, so a JSON-mode model that returns the string `"false"` was being treated as a passing answer. Add a regression test that sends the string `"false"` through the grader and asserts it refuses, then fix the parse.
+
+**Produced:** 8 regression tests added, the `bool("false")` coercion fixed with strict string comparison, and the grader fallback path explicitly covered. Total tests rose from 50 to 58.
+
+---
+
+### 3. Code Review
+
+**Prompt (reconstructed):**
+> Review the Phase 0 PR diff for correctness bugs. I want line-level findings with file and line number evidence from the actual codebase — not general opinions. If a finding does not hold up against the code, drop it. Separate blocking issues from non-blocking ones.
+
+**Produced:** Multi-agent PR review (4 agents) caught the `bool("false")` refusal-bypass, 9 additional issues including missing CSRF on destructive POSTs, and test gaps. Each finding included a file:line reference. Non-findings (e.g., a reviewer who applied the wrong project's visual-theme rules) were rejected with evidence.
+
+---
+
+**Prompt (reconstructed):**
+> Review the Phase 1 design plan for security correctness — specifically invite-code hashing and corpus mutation consistency. I'm using bcrypt. Challenge the assumption that storing a bcrypt hash is enough to look up an invite code at redemption time. Also check whether a snapshot-swap is enough to protect concurrent dense + sparse retrieval, or whether two consistency domains require a lock around the entire retrieve call.
+
+**Produced:** Two Codex review passes, both NEEDS-REWORK. Key findings accepted: invite codes need a structured `id.secret` format (bcrypt isn't lookupable — you need a clear id for O(1) lookup plus a secret half that's hashed); corpus threading.Lock must wrap the full `retrieve()` call not just mutations, because Chroma and BM25 are two consistency domains; `BEGIN IMMEDIATE` + conditional consume for atomic invite redemption. These were hardening decisions the builder would have missed.
+
+---
+
+### 4. Deployment
+
+**Prompt (reconstructed):**
+> Write a Docker + Hugging Face Space deployment plan for this FastAPI app. Requirements: first-boot eval corpus seeding via `deploy/bootstrap.py`, `GENACADEMY_DATA_DIR` for persistent storage, `GENACADEMY_SECURE_COOKIES` for Space environments, and a live HTTP smoke test that hits the login endpoint and validates a 200 response. The Space uses ephemeral `/data` unless paid storage is attached — document this limitation clearly.
+
+**Produced:** `docs/superpowers/plans/2026-06-10-genacademy-rag-phase2-docker-hf-space-deploy.md`, then `deploy/bootstrap.py`, `Dockerfile`, `scripts/smoke_test.sh`, and `docs/deploy.md` runbook. Plan reviewed by Kimchi before code; PR #9 reviewed by 4 agents after. Post-merge hardening commit added.
+
+---
+
+### 5. Final Packaging
+
+**Prompt (reconstructed):**
+> Generate a project write-up for the Week 2 handout submission. Include: what the app demonstrates, the two-tier corpus design, architecture overview with seam descriptions, iterations tried (Phase 0 → 1 → 2 depth → deploy → live validation), key learnings, and divergences from the sample solution. Also include a section on prompts used while building — the handout explicitly asks for this.
+
+**Produced:** `docs/project-writeup.md` (this file), `docs/demo-script.md`, and the `README.md` submission summary. The demo script covers the golden path (login → ask a course question → see citation → ask an unsupported question → see refusal) for the ≤5-minute cohort video.
+
+---
+
+**Key pattern across all prompts:** the most useful prompts required measurable outputs — eval deltas, specific file:line findings, test counts, or a gate before the next phase. Prompts that asked for "general feedback" or "your opinion" produced less actionable results than prompts that asked reviewers to verify a specific claim against the code.
 
 ## Iterations Tried
 
