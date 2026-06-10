@@ -167,3 +167,22 @@ def test_chunker_env_settings_parse(monkeypatch):
     assert s.chunker == "section"
     assert s.section_chunk_max_chars == 1800
     assert s.section_chunk_overlap == 120
+
+
+def test_deploy_data_dir_drives_default_paths(monkeypatch, tmp_path):
+    monkeypatch.setenv("GENACADEMY_DATA_DIR", str(tmp_path / "deploy-data"))
+    monkeypatch.delenv("GENACADEMY_CHROMA_DIR", raising=False)
+    monkeypatch.delenv("GENACADEMY_SQLITE", raising=False)
+
+    s = Settings.from_env()
+
+    assert s.chroma_dir == tmp_path / "deploy-data" / "chroma"
+    assert s.sqlite_path == tmp_path / "deploy-data" / "genacademy.sqlite"
+
+
+def test_secure_cookies_default_false_and_env_parse(monkeypatch):
+    monkeypatch.delenv("GENACADEMY_SECURE_COOKIES", raising=False)
+    assert Settings.from_env().secure_cookies is False
+
+    monkeypatch.setenv("GENACADEMY_SECURE_COOKIES", "true")
+    assert Settings.from_env().secure_cookies is True

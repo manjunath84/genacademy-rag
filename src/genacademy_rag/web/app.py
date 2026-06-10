@@ -17,7 +17,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
-from genacademy_rag.config import Settings
+from genacademy_rag.config import Settings, data_dir_from_env
 from genacademy_rag.core.pipeline import QueryPipeline
 from genacademy_rag.core.security import hash_password
 from genacademy_rag.data.datastore import SQLiteDatastore
@@ -42,7 +42,12 @@ def create_app(
 
     app = FastAPI()
     app.state.datastore = datastore
-    app.add_middleware(SessionMiddleware, secret_key=settings.session_secret, same_site="lax")
+    app.add_middleware(
+        SessionMiddleware,
+        secret_key=settings.session_secret,
+        same_site="lax",
+        https_only=settings.secure_cookies,
+    )
 
     def current_user(request: Request) -> str | None:
         return request.session.get("email")
@@ -350,7 +355,6 @@ def create_app(
 
 def build_default_app() -> FastAPI:
     """Real wiring: local embed + active provider preset + serving collection (seeded from eval)."""
-    from genacademy_rag.config import DATA_DIR
     from genacademy_rag.core.chunker import build_chunker
     from genacademy_rag.core.pipeline import IngestPipeline
     from genacademy_rag.core.providers import build_provider
@@ -397,7 +401,7 @@ def build_default_app() -> FastAPI:
         store=serving,
         datastore=datastore,
     )
-    uploads_dir = DATA_DIR / "uploads"
+    uploads_dir = data_dir_from_env() / "uploads"
     uploads_dir.mkdir(parents=True, exist_ok=True)
 
     def ingest_upload(doc):
