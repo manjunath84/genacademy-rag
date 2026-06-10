@@ -54,6 +54,9 @@ class Settings:
     top_k: int
     chunk_size: int
     chunk_overlap: int
+    chunker: str
+    section_chunk_max_chars: int
+    section_chunk_overlap: int
     chroma_dir: Path
     sqlite_path: Path
     session_secret: str
@@ -89,6 +92,13 @@ class Settings:
             top_k=int(os.environ.get("GENACADEMY_TOP_K", "5")),
             chunk_size=int(os.environ.get("GENACADEMY_CHUNK_SIZE", "1000")),
             chunk_overlap=int(os.environ.get("GENACADEMY_CHUNK_OVERLAP", "150")),
+            chunker=os.environ.get("GENACADEMY_CHUNKER", "fixed"),
+            section_chunk_max_chars=int(
+                os.environ.get("GENACADEMY_SECTION_CHUNK_MAX_CHARS", "1500")
+            ),
+            section_chunk_overlap=int(
+                os.environ.get("GENACADEMY_SECTION_CHUNK_OVERLAP", "150")
+            ),
             chroma_dir=Path(
                 os.environ.get("GENACADEMY_CHROMA_DIR", str(DATA_DIR / "chroma"))
             ),

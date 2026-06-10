@@ -1,13 +1,24 @@
 import json
 import sys
 
+import pytest
+
 import scripts.eval_retrieval as eval_script
 from genacademy_rag.config import Settings
 from genacademy_rag.core.types import Chunk, Citation, RetrievedChunk
 from genacademy_rag.eval.gold_schema import GoldQuestion, GoldSpan
 
 
-def test_eval_retrieval_json_out_includes_config_latency_and_rows(monkeypatch, tmp_path):
+@pytest.mark.parametrize(
+    ("collection_argv", "expected_collection"),
+    [
+        ([], "eval"),                                     # pins the no-flag default
+        (["--collection", "eval_section"], "eval_section"),
+    ],
+)
+def test_eval_retrieval_json_out_includes_config_latency_and_rows(
+    monkeypatch, tmp_path, collection_argv, expected_collection
+):
     settings = Settings(
         provider="openrouter",
         gen_base_url="https://openrouter.ai/api/v1",
@@ -17,6 +28,9 @@ def test_eval_retrieval_json_out_includes_config_latency_and_rows(monkeypatch, t
         top_k=5,
         chunk_size=1000,
         chunk_overlap=150,
+        chunker="section",
+        section_chunk_max_chars=1500,
+        section_chunk_overlap=150,
         chroma_dir=tmp_path / "chroma",
         sqlite_path=tmp_path / "db.sqlite",
         session_secret="test-secret",
@@ -98,12 +112,16 @@ def test_eval_retrieval_json_out_includes_config_latency_and_rows(monkeypatch, t
     monkeypatch.setattr(eval_script, "HybridRetriever", _Retriever)
     monkeypatch.setattr(eval_script, "build_reranker", lambda s: fake_reranker, raising=False)
     monkeypatch.setattr(eval_script, "load_gold_set", lambda path: [question])
-    monkeypatch.setattr(sys, "argv", ["eval_retrieval.py", "--json-out", str(out)])
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["eval_retrieval.py", *collection_argv, "--json-out", str(out)],
+    )
 
     eval_script.main()
 
     payload = json.loads(out.read_text())
-    assert state["collection"] == "eval"
+    assert state["collection"] == expected_collection
     assert state["top_k"] == 5
     assert state["candidate_k"] == 20
     assert state["reranker"] is fake_reranker
@@ -117,6 +135,10 @@ def test_eval_retrieval_json_out_includes_config_latency_and_rows(monkeypatch, t
     assert payload["config"]["rerank_enabled"] is True
     assert payload["config"]["rerank_device"] == "cpu"
     assert payload["config"]["candidate_k"] == 20
+    assert payload["config"]["collection"] == expected_collection
+    assert payload["config"]["chunker"] == "section"
+    assert payload["config"]["section_chunk_max_chars"] == 1500
+    assert payload["config"]["section_chunk_overlap"] == 150
     assert payload["latency"]["retrieval_ms_mean"] >= 0.0
     assert payload["questions"][0]["retrieval_ms"] >= 0.0
     assert payload["questions"][0]["max_cosine"] == 0.9

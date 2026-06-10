@@ -328,7 +328,7 @@ def create_app(
 def build_default_app() -> FastAPI:
     """Real wiring: local embed + active provider preset + serving collection (seeded from eval)."""
     from genacademy_rag.config import DATA_DIR
-    from genacademy_rag.core.chunker import FixedSizeChunker
+    from genacademy_rag.core.chunker import build_chunker
     from genacademy_rag.core.pipeline import IngestPipeline
     from genacademy_rag.core.providers import build_provider
     from genacademy_rag.core.reranker import build_reranker
@@ -354,8 +354,18 @@ def build_default_app() -> FastAPI:
         rerank_pool=s.rerank_pool,
     )
     datastore = SQLiteDatastore(s.sqlite_path)
-    pipe = IngestPipeline(chunker=FixedSizeChunker(s.chunk_size, s.chunk_overlap),
-                          provider=provider, store=serving, datastore=datastore)
+    pipe = IngestPipeline(
+        chunker=build_chunker(
+            s.chunker,
+            chunk_size=s.chunk_size,
+            chunk_overlap=s.chunk_overlap,
+            section_max_chars=s.section_chunk_max_chars,
+            section_overlap=s.section_chunk_overlap,
+        ),
+        provider=provider,
+        store=serving,
+        datastore=datastore,
+    )
     uploads_dir = DATA_DIR / "uploads"
     uploads_dir.mkdir(parents=True, exist_ok=True)
 

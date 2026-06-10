@@ -54,3 +54,27 @@ def test_rerank_env_settings_parse(monkeypatch, tmp_path):
     assert s.rerank_pool == 12
     assert s.rerank_device == "cpu"
     assert s.rerank_cache_dir == tmp_path / "hf-cache"
+
+
+def test_chunker_defaults_to_fixed(monkeypatch):
+    monkeypatch.delenv("GENACADEMY_CHUNKER", raising=False)
+    monkeypatch.delenv("GENACADEMY_SECTION_CHUNK_MAX_CHARS", raising=False)
+    monkeypatch.delenv("GENACADEMY_SECTION_CHUNK_OVERLAP", raising=False)
+
+    s = Settings.from_env()
+
+    assert s.chunker == "fixed"
+    assert s.section_chunk_max_chars == 1500
+    assert s.section_chunk_overlap == 150
+
+
+def test_chunker_env_settings_parse(monkeypatch):
+    monkeypatch.setenv("GENACADEMY_CHUNKER", "section")
+    monkeypatch.setenv("GENACADEMY_SECTION_CHUNK_MAX_CHARS", "1800")
+    monkeypatch.setenv("GENACADEMY_SECTION_CHUNK_OVERLAP", "120")
+
+    s = Settings.from_env()
+
+    assert s.chunker == "section"
+    assert s.section_chunk_max_chars == 1800
+    assert s.section_chunk_overlap == 120

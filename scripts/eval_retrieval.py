@@ -1,7 +1,8 @@
 """Day-2 gate: deterministic retrieval eval over the ingested pinned corpus. Prints recall@k /
 precision@k / MRR. No LLM, no generation key. (Full report + faithfulness = scripts/run_eval.py.)
 
-Run results (2026-06-08, top_k=5, all-MiniLM-L6-v2, HybridRetriever RRF):
+Run results (2026-06-08, collection=eval, chunker=fixed, rerank disabled, top_k=5,
+all-MiniLM-L6-v2, HybridRetriever RRF):
   RETRIEVAL EVAL  recall@k=0.67  precision@k=0.22  mrr=0.55  (n=12)
   q1    answerable       recall=1.00 mrr=1.00
   q2    answerable       recall=1.00 mrr=1.00
@@ -36,12 +37,19 @@ from genacademy_rag.eval.retrieval_eval import (
 GOLD = "src/genacademy_rag/eval/gold/gold_set.yaml"
 
 
-def _config_snapshot(settings: Settings) -> dict:
+def _config_snapshot(settings: Settings, *, collection: str) -> dict:
+    # `chunker` reflects GENACADEMY_CHUNKER at eval time, not what actually ingested
+    # `collection` — keep the env var consistent with the collection's ingest run.
     return {
-        "collection": "eval",
+        "collection": collection,
         "top_k": settings.top_k,
         "candidate_k": DEFAULT_CANDIDATE_K,
         "embed_model": settings.embed_model,
+        "chunker": settings.chunker,
+        "chunk_size": settings.chunk_size,
+        "chunk_overlap": settings.chunk_overlap,
+        "section_chunk_max_chars": settings.section_chunk_max_chars,
+        "section_chunk_overlap": settings.section_chunk_overlap,
         "rerank_enabled": settings.rerank_enabled,
         "rerank_model": settings.rerank_model,
         "rerank_pool": settings.rerank_pool,
@@ -54,10 +62,11 @@ def _config_snapshot(settings: Settings) -> dict:
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--json-out", type=Path)
+    ap.add_argument("--collection", default="eval")
     args = ap.parse_args()
 
     s = Settings.from_env()
-    store = ChromaStore(persist_dir=s.chroma_dir, collection="eval")
+    store = ChromaStore(persist_dir=s.chroma_dir, collection=args.collection)
     chunks = store.get_all_chunks()
     # Embeddings only — no generate() — so this runs with zero provider key.
     embedder = STEmbedder(s.embed_model)
@@ -114,7 +123,7 @@ def main():
         payload = build_retrieval_eval_payload(
             metrics=agg,
             rows=scores,
-            config=_config_snapshot(s),
+            config=_config_snapshot(s, collection=args.collection),
         )
         args.json_out.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
 
