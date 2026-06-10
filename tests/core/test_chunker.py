@@ -94,3 +94,89 @@ def test_build_chunker_rejects_unknown_name():
         assert "unknown chunker" in str(exc)
     else:
         raise AssertionError("expected ValueError")
+
+
+def test_section_chunker_keeps_heading_with_markdown_table():
+    text = (
+        "# Course\n\n"
+        "Intro paragraph.\n\n"
+        "## Week 6 Resources\n\n"
+        "| Type | Link |\n"
+        "| --- | --- |\n"
+        "| Video | RAG workshop |\n\n"
+        "Closing paragraph.\n"
+    )
+
+    chunks = SectionAwareChunker(max_chars=1500, overlap=150).chunk(_doc(text))
+
+    table_chunks = [c for c in chunks if "| Video | RAG workshop |" in c.text]
+    assert len(table_chunks) == 1
+    assert "## Week 6 Resources" in table_chunks[0].text
+    assert table_chunks[0].citation.page_or_section == "section: Course > Week 6 Resources"
+
+
+def test_section_chunker_keeps_fenced_code_block_together_when_under_limit():
+    text = (
+        "# Lab\n\n"
+        "Before code.\n\n"
+        "```python\n"
+        "print('rag')\n"
+        "print('eval')\n"
+        "```\n\n"
+        "After code.\n"
+    )
+
+    chunks = SectionAwareChunker(max_chars=120, overlap=20).chunk(_doc(text))
+
+    code_chunks = [c for c in chunks if "print('rag')" in c.text]
+    assert len(code_chunks) == 1
+    assert "```python\nprint('rag')\nprint('eval')\n```" in code_chunks[0].text
+    assert code_chunks[0].citation.page_or_section == "section: Lab"
+
+
+def test_section_chunker_splits_oversized_block_with_overlap():
+    text = "# Big Section\n\n" + ("alpha beta gamma\n" * 40)
+
+    chunks = SectionAwareChunker(max_chars=120, overlap=30).chunk(_doc(text))
+
+    assert len(chunks) > 1
+    for chunk in chunks:
+        assert len(chunk.text) <= 120
+        assert chunk.citation.page_or_section == "section: Big Section"
+    for prev, nxt in zip(chunks, chunks[1:], strict=False):
+        assert nxt.citation.char_start < prev.citation.char_end
+        assert nxt.citation.char_start >= prev.citation.char_start
+
+
+def test_section_chunker_preserves_monotonic_line_and_char_spans():
+    text = (
+        "# A\n\n"
+        "line one\n"
+        "line two\n\n"
+        "## B\n\n"
+        "line three\n"
+        "line four\n"
+    )
+
+    chunks = SectionAwareChunker(max_chars=35, overlap=5).chunk(_doc(text))
+
+    assert chunks
+    for chunk in chunks:
+        assert chunk.text == text[chunk.citation.char_start:chunk.citation.char_end]
+        assert chunk.citation.char_start < chunk.citation.char_end
+        assert chunk.citation.line_start >= 1
+        assert chunk.citation.line_end >= chunk.citation.line_start
+    for prev, nxt in zip(chunks, chunks[1:], strict=False):
+        assert nxt.ordinal == prev.ordinal + 1
+
+
+def test_section_chunker_short_doc_is_one_full_span_chunk():
+    doc = _doc("# One\n\nShort body.\n")
+
+    chunks = SectionAwareChunker(max_chars=1500, overlap=150).chunk(doc)
+
+    assert len(chunks) == 1
+    assert chunks[0].text == doc.text
+    assert chunks[0].citation.char_start == 0
+    assert chunks[0].citation.char_end == len(doc.text)
+    assert chunks[0].citation.page_or_section == "section: One"
