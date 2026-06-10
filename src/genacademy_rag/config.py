@@ -28,9 +28,11 @@ NEBIUS_EMBED_MODEL_DEFAULT = "Qwen/Qwen3-Embedding-8B"
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR = REPO_ROOT / "data"
-# Materials live at GenAcademy/CuratedRAGMaterials/ — two levels above REPO_ROOT
-# (REPO_ROOT=genacademy-rag/ → parent=Week2-RAG_ContextEngineering/ → parent=GenAcademy/)
-CURATED_MATERIALS_DIR = REPO_ROOT.parent.parent / "CuratedRAGMaterials"
+
+
+def data_dir_from_env() -> Path:
+    raw = os.environ.get("GENACADEMY_DATA_DIR")
+    return Path(raw) if raw else DATA_DIR
 
 
 def _env_bool(name: str, default: bool) -> bool:
@@ -88,9 +90,15 @@ class Settings:
     nebius_api_key: str = ""
     nebius_embed_model: str = NEBIUS_EMBED_MODEL_DEFAULT
     embed_dim: int = 384
+    secure_cookies: bool = False
 
     def __post_init__(self):
         if self.session_secret == "dev-only-change-me":
+            if self.secure_cookies:
+                raise ValueError(
+                    "GENACADEMY_SECURE_COOKIES=true requires a non-default "
+                    "GENACADEMY_SESSION_SECRET"
+                )
             warnings.warn(
                 "GENACADEMY_SESSION_SECRET is the default dev value — set it before deploying",
                 stacklevel=2,
@@ -114,6 +122,7 @@ class Settings:
             raise ValueError(
                 f"unknown GENACADEMY_EMBEDDINGS={embeddings!r}; one of ['local', 'nebius']"
             )
+        data_dir = data_dir_from_env()
         nebius_base_var, nebius_base_default, nebius_key_var, _nebius_model_var = (
             PROVIDER_PRESETS["nebius"]
         )
@@ -133,11 +142,9 @@ class Settings:
             section_chunk_overlap=int(
                 os.environ.get("GENACADEMY_SECTION_CHUNK_OVERLAP", "150")
             ),
-            chroma_dir=Path(
-                os.environ.get("GENACADEMY_CHROMA_DIR", str(DATA_DIR / "chroma"))
-            ),
+            chroma_dir=Path(os.environ.get("GENACADEMY_CHROMA_DIR", str(data_dir / "chroma"))),
             sqlite_path=Path(
-                os.environ.get("GENACADEMY_SQLITE", str(DATA_DIR / "genacademy.sqlite"))
+                os.environ.get("GENACADEMY_SQLITE", str(data_dir / "genacademy.sqlite"))
             ),
             session_secret=os.environ.get("GENACADEMY_SESSION_SECRET", "dev-only-change-me"),
             rerank_enabled=_env_bool("GENACADEMY_RERANK_ENABLED", False),
@@ -163,4 +170,5 @@ class Settings:
                 NEBIUS_EMBED_MODEL_DEFAULT,
             ),
             embed_dim=int(os.environ.get("GENACADEMY_EMBED_DIM", "384")),
+            secure_cookies=_env_bool("GENACADEMY_SECURE_COOKIES", False),
         )

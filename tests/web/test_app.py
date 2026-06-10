@@ -155,6 +155,51 @@ def test_signup_redeems_invite_and_logs_in(monkeypatch, tmp_path):
     assert "Ask the cohort materials" in home.text
 
 
+def test_create_app_uses_secure_cookie_setting(monkeypatch, tmp_path):
+    import genacademy_rag.web.app as app_module
+    from genacademy_rag.config import Settings
+    from genacademy_rag.data.datastore import SQLiteDatastore
+
+    settings = Settings(
+        provider="openrouter",
+        gen_base_url="https://openrouter.ai/api/v1",
+        gen_api_key="",
+        gen_model="",
+        embed_model="all-MiniLM-L6-v2",
+        top_k=5,
+        chunk_size=1000,
+        chunk_overlap=150,
+        chunker="fixed",
+        section_chunk_max_chars=1500,
+        section_chunk_overlap=150,
+        chroma_dir=tmp_path / "chroma",
+        sqlite_path=tmp_path / "app.sqlite",
+        session_secret="test-secret",
+        rerank_enabled=False,
+        rerank_model="cross-encoder/ms-marco-MiniLM-L6-v2",
+        rerank_local_files_only=True,
+        rerank_batch_size=32,
+        rerank_pool=0,
+        rerank_device=None,
+        rerank_cache_dir=None,
+        secure_cookies=True,
+    )
+
+    monkeypatch.setattr(app_module.Settings, "from_env", classmethod(lambda cls: settings))
+    app = app_module.create_app(
+        retriever=object(),
+        provider=object(),
+        datastore=SQLiteDatastore(tmp_path / "test.sqlite"),
+    )
+
+    session_middleware = next(
+        middleware
+        for middleware in app.user_middleware
+        if middleware.cls.__name__ == "SessionMiddleware"
+    )
+    assert session_middleware.kwargs["https_only"] is True
+
+
 def test_admin_routes_block_member(monkeypatch, tmp_path):
     c = _client(monkeypatch, tmp_path)
     _login(c)
