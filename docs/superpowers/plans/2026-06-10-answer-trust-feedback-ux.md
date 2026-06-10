@@ -881,7 +881,7 @@ git commit -m "feat: POST /feedback endpoint (CSRF, best-effort persist)"
 - Modify: `src/genacademy_rag/web/app.py` (import `FileResponse`; new route after `feedback`)
 - Modify: `tests/web/test_app.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/web/test_app.py`:
 
@@ -940,12 +940,12 @@ def test_document_file_404s(monkeypatch, tmp_path):
 `scripts/ingest_eval_corpus.py` / the upload route — it is keyword-based `**kwargs`
 mapped to the `documents` columns shown in `SCHEMA`.)
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `uv run pytest tests/web/test_app.py -v -k document_file`
 Expected: FAIL — 404 on every call including happy path (route missing)
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `src/genacademy_rag/web/app.py`, extend the responses import:
 
@@ -978,12 +978,12 @@ Add the route:
 The path always comes from the datastore row — never from the request — so there is no
 traversal surface.
 
-- [ ] **Step 4: Run to verify they pass**
+- [x] **Step 4: Run to verify they pass**
 
 Run: `uv run pytest tests/web/test_app.py -v -k document_file`
 Expected: 4 PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/genacademy_rag/web/app.py tests/web/test_app.py

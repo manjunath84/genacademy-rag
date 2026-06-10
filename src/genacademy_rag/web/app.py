@@ -13,7 +13,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, Request, UploadFile
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
@@ -198,6 +198,27 @@ def create_app(
         except Exception:
             logger.exception("feedback write failed (query_id=%r)", query_id)
         return HTMLResponse('<span class="text-xs text-slate-500">Thanks for the feedback</span>')
+
+    @app.get("/documents/{doc_id}/file")
+    def document_file(request: Request, doc_id: str):
+        # Members can access originals for chunks they already see as retrieved context.
+        if not current_user(request):
+            return RedirectResponse("/login", status_code=303)
+        doc = datastore.get_document(doc_id)
+        if not doc or doc.get("status") == "deleted" or not doc.get("stored_path"):
+            return HTMLResponse("Not found", status_code=404)
+        path = Path(doc["stored_path"])
+        if not path.exists():
+            return HTMLResponse("Not found", status_code=404)
+        filename = doc.get("filename") or path.name
+        if path.suffix.lower() == ".pdf":
+            return FileResponse(
+                path,
+                media_type="application/pdf",
+                filename=filename,
+                content_disposition_type="inline",
+            )
+        return FileResponse(path, filename=filename)
 
     @app.get("/admin/invites", response_class=HTMLResponse)
     def admin_invites(request: Request):

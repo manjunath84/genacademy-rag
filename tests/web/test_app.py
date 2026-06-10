@@ -91,6 +91,21 @@ def _ask_and_get_query_id(client, token):
     return match.group(1) if match else None, page
 
 
+def _store_doc(client, tmp_path, *, doc_id="up1", suffix=".pdf", status="indexed"):
+    stored = tmp_path / f"deck{suffix}"
+    stored.write_bytes(b"%PDF-1.4 fake content")
+    client.app.state.datastore.add_document(
+        doc_id=doc_id,
+        title="Week2 Deck",
+        source_type=suffix.lstrip("."),
+        filename=f"deck{suffix}",
+        uploaded_by="admin@genacademy.local",
+        status=status,
+        stored_path=str(stored),
+    )
+    return stored
+
+
 def _admin_post(client, path: str, *, csrf_token: str | None = None):
     data = {}
     if path == "/admin/invites":
@@ -190,6 +205,51 @@ def test_feedback_write_failure_does_not_500(monkeypatch, tmp_path, caplog):
         r = c.post("/feedback", data={"query_id": 1, "verdict": 1, "csrf_token": token})
     assert r.status_code == 200
     assert "feedback write failed" in caplog.text
+
+
+def test_document_file_requires_login(monkeypatch, tmp_path):
+    c = _client(monkeypatch, tmp_path)
+    r = c.get("/documents/up1/file", follow_redirects=False)
+    assert r.status_code == 303
+    assert r.headers["location"] == "/login"
+
+
+def test_document_file_serves_pdf_inline(monkeypatch, tmp_path):
+    c = _client(monkeypatch, tmp_path)
+    _login(c)
+    _store_doc(c, tmp_path, suffix=".pdf")
+    r = c.get("/documents/up1/file")
+    assert r.status_code == 200
+    assert r.headers["content-type"] == "application/pdf"
+    assert "inline" in r.headers["content-disposition"]
+
+
+def test_document_file_downloads_pptx(monkeypatch, tmp_path):
+    c = _client(monkeypatch, tmp_path)
+    _login(c)
+    _store_doc(c, tmp_path, doc_id="up2", suffix=".pptx")
+    r = c.get("/documents/up2/file")
+    assert r.status_code == 200
+    assert "attachment" in r.headers["content-disposition"]
+
+
+def test_document_file_404s(monkeypatch, tmp_path):
+    c = _client(monkeypatch, tmp_path)
+    _login(c)
+    assert c.get("/documents/nope/file").status_code == 404
+
+    _store_doc(c, tmp_path, doc_id="dead", status="deleted")
+    assert c.get("/documents/dead/file").status_code == 404
+
+    c.app.state.datastore.add_document(
+        doc_id="gh1",
+        title="README.md",
+        source_type="github",
+        repo="r",
+        file_path="README.md",
+        commit_hash="abc",
+    )
+    assert c.get("/documents/gh1/file").status_code == 404
 
 
 def test_signup_redeems_invite_and_logs_in(monkeypatch, tmp_path):
