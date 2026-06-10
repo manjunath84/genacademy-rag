@@ -31,7 +31,7 @@ def _settings(tmp_path, *, chunker="fixed", embeddings="local"):
         rerank_device=None,
         rerank_cache_dir=None,
         embeddings=embeddings,
-        nebius_base_url="https://api.studio.nebius.com/v1",
+        nebius_base_url="https://api.tokenfactory.nebius.com/v1/",
         nebius_api_key="neb-test",
         nebius_embed_model="Qwen/Qwen3-Embedding-8B",
         embed_dim=4096 if embeddings == "nebius" else 384,

@@ -53,7 +53,7 @@ Add these as **Variables**, not secrets:
 
 ```text
 GENACADEMY_PROVIDER=nebius
-NEBIUS_BASE_URL=https://api.studio.nebius.com/v1
+NEBIUS_BASE_URL=https://api.tokenfactory.nebius.com/v1/
 NEBIUS_MODEL=<your-validated-nebius-model>
 GENACADEMY_DATA_DIR=/data
 GENACADEMY_SECURE_COOKIES=true
@@ -78,7 +78,7 @@ git pull --ff-only origin main
 Add the Hugging Face Space as a remote:
 
 ```bash
-git remote add hf https://huggingface.co/spaces/<your-hf-username>/genacademy-rag
+git remote add hf https://huggingface.co/spaces/Manjunath84/genacademy-rag
 ```
 
 Push `main` to the Space:
@@ -95,6 +95,23 @@ git push --force-with-lease hf main:main
 ```
 
 Only use that force command for a fresh Space you just created.
+
+If the first push stalls before uploading objects, create a Hugging Face access token with write
+permission and force Git to prompt in the terminal:
+
+```bash
+GIT_ASKPASS= SSH_ASKPASS= git push --verbose --progress --force-with-lease hf main:main
+```
+
+Use `Manjunath84` as the username and the Hugging Face token as the password. If
+`--force-with-lease` reports `stale info` on the first sync and `git fetch hf main` fails with a
+protocol error, it is acceptable to replace the brand-new Space README once:
+
+```bash
+GIT_ASKPASS= SSH_ASKPASS= git -c protocol.version=1 push --verbose --progress --force hf main:main
+```
+
+After the first successful Space sync, use normal pushes again.
 
 ### 5. Watch Build Logs
 
@@ -116,13 +133,13 @@ model.
 Once the Space says it is running, copy its app URL. It usually looks like:
 
 ```text
-https://<your-hf-username>-genacademy-rag.hf.space
+https://Manjunath84-genacademy-rag.hf.space
 ```
 
 Then run locally:
 
 ```bash
-uv run python scripts/smoke_http.py --base-url https://<your-hf-username>-genacademy-rag.hf.space
+uv run python scripts/smoke_http.py --base-url https://Manjunath84-genacademy-rag.hf.space
 ```
 
 Expected:
@@ -130,6 +147,19 @@ Expected:
 ```text
 HTTP SMOKE OK  base_url=https://...
 ```
+
+Confirmed live smoke for this Space on 2026-06-10:
+
+```bash
+uv run python scripts/smoke_http.py --base-url https://Manjunath84-genacademy-rag.hf.space
+```
+
+```text
+HTTP SMOKE OK  base_url=https://Manjunath84-genacademy-rag.hf.space
+```
+
+The documented Nebius Token Factory URL includes a trailing slash. With the pinned OpenAI SDK, that
+base URL resolves chat completions as `https://api.tokenfactory.nebius.com/v1/chat/completions`.
 
 ### 7. If It Fails
 
@@ -154,7 +184,7 @@ After the smoke test passes, the next task is live login/query testing.
 | Name | Value |
 | --- | --- |
 | `GENACADEMY_PROVIDER` | `nebius` for the mandatory-provider demo, or `openrouter` for dev fallback. |
-| `NEBIUS_BASE_URL` | `https://api.studio.nebius.com/v1` |
+| `NEBIUS_BASE_URL` | `https://api.tokenfactory.nebius.com/v1/` |
 | `NEBIUS_MODEL` | The validated generation model used for the demo. |
 | `GENACADEMY_DATA_DIR` | `/data` |
 | `GENACADEMY_SECURE_COOKIES` | `true` |
@@ -196,7 +226,7 @@ to `false`; for a Space-like local smoke, keep `GENACADEMY_DATA_DIR=/data`.
 ## Live Space Smoke
 
 ```bash
-uv run python scripts/smoke_http.py --base-url https://<namespace>-<space>.hf.space
+uv run python scripts/smoke_http.py --base-url https://Manjunath84-genacademy-rag.hf.space
 ```
 
 The HTTP smoke checks `/login` only. It proves the container booted, templates render, and the CSRF

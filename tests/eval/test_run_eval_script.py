@@ -31,7 +31,7 @@ def test_run_eval_keeps_retrieval_local_when_nebius_embeddings_selected(monkeypa
         rerank_device=None,
         rerank_cache_dir=None,
         embeddings="nebius",
-        nebius_base_url="https://api.studio.nebius.com/v1",
+        nebius_base_url="https://api.tokenfactory.nebius.com/v1/",
         nebius_api_key="",
         nebius_embed_model="Qwen/Qwen3-Embedding-8B",
         embed_dim=4096,

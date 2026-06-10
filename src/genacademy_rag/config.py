@@ -11,7 +11,7 @@ from pathlib import Path
 PROVIDER_PRESETS: dict[str, tuple[str, str, str, str]] = {
     "nebius": (
         "NEBIUS_BASE_URL",
-        "https://api.studio.nebius.com/v1",
+        "https://api.tokenfactory.nebius.com/v1/",
         "NEBIUS_API_KEY",
         "NEBIUS_MODEL",
     ),
@@ -86,7 +86,7 @@ class Settings:
     pinecone_cloud: str = "aws"
     pinecone_region: str = "us-east-1"
     embeddings: str = "local"
-    nebius_base_url: str = "https://api.studio.nebius.com/v1"
+    nebius_base_url: str = "https://api.tokenfactory.nebius.com/v1/"
     nebius_api_key: str = ""
     nebius_embed_model: str = NEBIUS_EMBED_MODEL_DEFAULT
     embed_dim: int = 384

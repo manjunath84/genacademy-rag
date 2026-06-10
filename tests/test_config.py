@@ -57,7 +57,7 @@ def test_vectorstore_defaults_to_chroma_with_empty_pinecone_settings(monkeypatch
     assert s.pinecone_cloud == "aws"
     assert s.pinecone_region == "us-east-1"
     assert s.embeddings == "local"
-    assert s.nebius_base_url == "https://api.studio.nebius.com/v1"
+    assert s.nebius_base_url == "https://api.tokenfactory.nebius.com/v1/"
     assert s.nebius_api_key == ""
     assert s.nebius_embed_model == "Qwen/Qwen3-Embedding-8B"
     assert s.embed_dim == 384
