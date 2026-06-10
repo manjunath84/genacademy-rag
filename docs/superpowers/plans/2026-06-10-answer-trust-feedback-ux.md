@@ -387,7 +387,7 @@ git commit -m "feat: merge retrieved citations into deduped SourceView rows"
 - Modify: `src/genacademy_rag/core/graph.py:14-18` (ANSWER_SYSTEM) and `:40` (max_tokens)
 - Modify: `tests/core/test_graph.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/core/test_graph.py`:
 
@@ -433,12 +433,12 @@ def test_answer_node_generates_with_800_max_tokens(fake_provider):
     assert captured["max_tokens"] == 800
 ```
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `uv run pytest tests/core/test_graph.py -v -k "overview or 800"`
 Expected: both FAIL (old prompt says "Be concise"; max_tokens is 512)
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `src/genacademy_rag/core/graph.py`, replace the `ANSWER_SYSTEM` constant:
 
@@ -462,12 +462,12 @@ And in `answer_node`, change the generate call's `max_tokens`:
         )
 ```
 
-- [ ] **Step 4: Run the full graph test file**
+- [x] **Step 4: Run the full graph test file**
 
 Run: `uv run pytest tests/core/test_graph.py -v`
 Expected: all PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/genacademy_rag/core/graph.py tests/core/test_graph.py
