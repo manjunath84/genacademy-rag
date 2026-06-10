@@ -117,9 +117,11 @@ CREATE TABLE IF NOT EXISTS feedback (
 
 - **`chat.html`** rebuilt to the approved card. Alpine.js added (locked stack) for the
   copy button (`navigator.clipboard.writeText`, answer text only). Retry re-posts the
-  same form (same question, fresh CSRF). Thumbs are two small POST forms to `/feedback`
-  with hidden `query_id`, `verdict`, `csrf_token`; response is 303 back to the answer
-  (PRG, matching existing POST patterns).
+  same form (same question, fresh CSRF). Thumbs are two HTMX POST forms to `/feedback`
+  with hidden `query_id`, `verdict`, `csrf_token`; the response is a small HTML fragment
+  ("Thanks for the feedback") swapped over the thumbs. (A PRG redirect would land on `/`
+  and lose the rendered answer — answers are not addressable URLs, so fragment swap it is;
+  HTMX is already loaded in `chat.html`.)
 - **`POST /feedback`** — requires login + valid CSRF; validates `verdict ∈ {1, -1}` and
   `query_id` is an int; calls `add_feedback` **best-effort** (log on failure, never 500
   the user). 303 redirect.
