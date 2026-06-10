@@ -1,6 +1,8 @@
 """Ingest the commit-pinned eval corpus into Chroma + SQLite. Fetches ONLY the allowlisted
 repos+SHAs (docs/spike-findings.md §4); Week-2 is firewalled by the allowlist. Run once before
-the eval. Idempotent (upsert by chunk_id)."""
+the eval. Idempotent only when re-run with the same chunker (upsert by `{doc_id}::{ordinal}`);
+switching --chunker on an existing collection leaves stale chunks behind — pass --reset-collection.
+Alternate collections (--collection eval_section) get an isolated SQLite file by default."""
 import argparse
 from pathlib import Path
 
@@ -78,7 +80,7 @@ def main():
                 docs.append(load_markdown(
                     repo=repo["repo"], file_path=f["path"],
                     commit_hash=repo["sha"], raw_text=raw.decode("utf-8"),
-            ))
+                ))
             print(f"fetched {repo['repo']}/{f['path']} @ {repo['sha'][:7]}")
     n = pipe.ingest(docs)
     print(

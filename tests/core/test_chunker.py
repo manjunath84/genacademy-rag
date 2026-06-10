@@ -58,27 +58,32 @@ def test_pdf_page_label_follows_chunk_start_across_a_boundary():
 
 
 def test_build_chunker_returns_fixed_by_default():
+    # Distinct values per param so a fixed/section param swap fails loudly.
     chunker = build_chunker(
         "fixed",
-        chunk_size=1000,
-        chunk_overlap=150,
-        section_max_chars=1500,
-        section_overlap=150,
+        chunk_size=900,
+        chunk_overlap=100,
+        section_max_chars=1700,
+        section_overlap=120,
     )
 
     assert isinstance(chunker, FixedSizeChunker)
+    assert chunker.chunk_size == 900
+    assert chunker.overlap == 100
 
 
 def test_build_chunker_returns_section_chunker():
     chunker = build_chunker(
         "section",
-        chunk_size=1000,
-        chunk_overlap=150,
-        section_max_chars=1500,
-        section_overlap=150,
+        chunk_size=900,
+        chunk_overlap=100,
+        section_max_chars=1700,
+        section_overlap=120,
     )
 
     assert isinstance(chunker, SectionAwareChunker)
+    assert chunker.max_chars == 1700
+    assert chunker.overlap == 120
 
 
 def test_build_chunker_rejects_unknown_name():
@@ -200,3 +205,56 @@ def test_section_chunker_short_doc_is_one_full_span_chunk():
     assert chunks[0].citation.char_start == 0
     assert chunks[0].citation.char_end == len(doc.text)
     assert chunks[0].citation.page_or_section == "section: One"
+
+
+def test_section_chunker_line_numbers_match_source_exactly():
+    # The eval scores gold-span overlap on line numbers, so pin exact values:
+    # line 1 "# A", line 3 "intro", line 5 "## B", line 7 "body line".
+    text = "# A\n\nintro\n\n## B\n\nbody line\n"
+
+    chunks = SectionAwareChunker(max_chars=1500, overlap=150).chunk(_doc(text))
+
+    assert len(chunks) == 2
+    assert chunks[0].citation.line_start == 1
+    assert chunks[0].citation.line_end == 3
+    assert chunks[1].citation.line_start == 5
+    assert chunks[1].citation.line_end == 7
+
+
+def test_section_chunker_doc_without_headings_chunks_with_no_section_label():
+    doc = _doc("para one line.\n\npara two line.\n")
+
+    chunks = SectionAwareChunker(max_chars=1500, overlap=150).chunk(doc)
+
+    assert len(chunks) == 1
+    assert chunks[0].text == doc.text
+    assert chunks[0].citation.page_or_section is None
+
+
+def test_section_chunker_whitespace_only_and_empty_docs():
+    whitespace = SectionAwareChunker(max_chars=1500, overlap=150).chunk(_doc("   \n\n  \n"))
+    assert len(whitespace) == 1
+    assert whitespace[0].citation.char_start == 0
+    assert whitespace[0].citation.char_end == 8
+
+    assert SectionAwareChunker(max_chars=1500, overlap=150).chunk(_doc("")) == []
+
+
+def test_section_chunker_rejects_malformed_headings():
+    # 7+ marks and missing space after # are not markdown headings.
+    text = "####### Seven\n\n#nospace\n\nbody text.\n"
+
+    chunks = SectionAwareChunker(max_chars=1500, overlap=150).chunk(_doc(text))
+
+    assert len(chunks) == 1
+    assert chunks[0].citation.page_or_section is None
+
+
+def test_section_chunker_heading_level_jump_truncates_stack():
+    # h1 -> h3 keeps h1 as parent; the later h2 truncates back to h1's child.
+    text = "# H1\n\n### H3\n\nbody\n\n## H2\n\nmore\n"
+
+    chunks = SectionAwareChunker(max_chars=1500, overlap=150).chunk(_doc(text))
+
+    labels = [c.citation.page_or_section for c in chunks]
+    assert labels == ["section: H1", "section: H1 > H3", "section: H1 > H2"]

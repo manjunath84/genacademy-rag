@@ -1,7 +1,8 @@
 """Day-2 gate: deterministic retrieval eval over the ingested pinned corpus. Prints recall@k /
 precision@k / MRR. No LLM, no generation key. (Full report + faithfulness = scripts/run_eval.py.)
 
-Run results (2026-06-08, top_k=5, all-MiniLM-L6-v2, HybridRetriever RRF):
+Run results (2026-06-08, collection=eval, chunker=fixed, rerank disabled, top_k=5,
+all-MiniLM-L6-v2, HybridRetriever RRF):
   RETRIEVAL EVAL  recall@k=0.67  precision@k=0.22  mrr=0.55  (n=12)
   q1    answerable       recall=1.00 mrr=1.00
   q2    answerable       recall=1.00 mrr=1.00
@@ -37,6 +38,8 @@ GOLD = "src/genacademy_rag/eval/gold/gold_set.yaml"
 
 
 def _config_snapshot(settings: Settings, *, collection: str) -> dict:
+    # `chunker` reflects GENACADEMY_CHUNKER at eval time, not what actually ingested
+    # `collection` — keep the env var consistent with the collection's ingest run.
     return {
         "collection": collection,
         "top_k": settings.top_k,

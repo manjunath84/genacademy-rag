@@ -1,6 +1,9 @@
-"""Chunker seam. FixedSizeChunker = character windows with overlap, capturing exact char spans
-and 1-based line spans for citations. Char-based (~250 tok at size 1000) respects the embedder's
-256-token cap; token-exact/section-aware chunking is the Phase-2 eval axis."""
+"""Chunker seam. FixedSizeChunker = character windows with overlap; SectionAwareChunker =
+markdown-heading-bounded blocks (tables/fences kept intact, fixed-window fallback with overlap
+for oversized blocks). Both capture exact char spans and 1-based line spans for citations.
+Fixed chunks (~250 tok at size 1000) fit the embedder's 256-token cap; section chunks may reach
+max_chars=1500 (~375 tok) and get tail-truncated by the embedder — a known trade-off measured in
+eval/phase2-section-aware-chunking-delta.md."""
 from __future__ import annotations
 
 from dataclasses import dataclass

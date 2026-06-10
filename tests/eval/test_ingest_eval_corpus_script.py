@@ -98,6 +98,14 @@ def test_ingest_eval_defaults_to_eval_collection_fixed_chunker_and_primary_sqlit
     monkeypatch.setattr(ingest_script, "build_provider", lambda s: _Provider())
     monkeypatch.setattr(ingest_script, "ChromaStore", _Store)
     monkeypatch.setattr(ingest_script, "SQLiteDatastore", _Datastore)
+    # Without --reset-collection the baseline `eval` collection must never be deleted.
+    monkeypatch.setattr(
+        ingest_script,
+        "reset_chroma_collection",
+        lambda persist_dir, collection: pytest.fail(
+            "reset_chroma_collection must not run without --reset-collection"
+        ),
+    )
     monkeypatch.setattr(
         ingest_script,
         "EVAL_CORPUS",
