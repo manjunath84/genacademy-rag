@@ -24,9 +24,9 @@ Pro plan.
 4. Click **Create Space**.
 
 Dev Mode is for debugging inside the Space container and is not needed for a normal Git-based
-deployment. Persistent storage is optional and may require a paid plan. Without persistent storage,
-`/data` is wiped on restart; this app will re-fetch and re-ingest the eval corpus during cold boot,
-which is slower but acceptable for the first deploy.
+deployment. Persistent storage / storage buckets are optional and may depend on account or product
+availability. Without persistent storage, `/data` is wiped on restart; this app will re-fetch and
+re-ingest the eval corpus during cold boot, which is slower but acceptable for the first deploy.
 
 ### 2. Add Secrets
 
@@ -231,6 +231,204 @@ uv run python scripts/smoke_http.py --base-url https://Manjunath84-genacademy-ra
 
 The HTTP smoke checks `/login` only. It proves the container booted, templates render, and the CSRF
 render path works. It does not prove a cookie round-trip and does not spend generation tokens.
+
+## Live End-To-End Test Checklist
+
+Run these checks after the Space is **Running** and the HTTP smoke passes. Use the live URL:
+
+```text
+https://Manjunath84-genacademy-rag.hf.space
+```
+
+### 1. Member Login
+
+1. Open the live URL in a browser.
+2. Log in with the seeded member:
+
+   ```text
+   email: member@genacademy.local
+   password: member
+   ```
+
+3. Expected: the chat screen loads with the heading **Ask the cohort materials**.
+
+There is no logout button in this slice. To switch users, use an incognito/private browser window,
+another browser profile, or clear the Space's cookies.
+
+### 2. Cited Course-Material Answer
+
+Ask:
+
+```text
+Which resource in the Gen Academy catalog covers chunking strategies for RAG, and what chunking types does it address?
+```
+
+Expected:
+
+- The answer identifies Weaviate's **Chunking Strategies for RAG** resource.
+- The answer mentions fixed, recursive, sentence, semantic chunking, and overlap trade-offs.
+- The **Sources** section is visible and includes course-material citations.
+
+This proves browser login, secure cookies, `/ask`, retrieval, generation, citations, and usage
+logging all work on the live deployment.
+
+### 3. Honest Refusal
+
+Ask:
+
+```text
+How much does the Mastering Agentic AI certification cost?
+```
+
+Expected:
+
+```text
+I could not find this in the course materials.
+```
+
+This proves the refusal path still works instead of forcing an unsupported answer.
+
+### 4. Admin Login And Pages
+
+Open a private/incognito window and log in with the seeded admin:
+
+```text
+email: admin@genacademy.local
+password: admin
+```
+
+Visit these paths:
+
+```text
+/admin/invites
+/admin/documents
+/admin/dashboard
+```
+
+Expected:
+
+- `/admin/invites` shows invite generation controls.
+- `/admin/documents` shows upload, re-index, and document table controls.
+- `/admin/dashboard` shows usage summary and recent questions.
+
+This proves admin RBAC and the product/admin layer are live.
+
+### 5. Admin PDF Upload Becomes Searchable
+
+1. Create a one-page PDF with a unique sentence, for example:
+
+   ```text
+   GenAcademy upload smoke test: the private demo keyword is saffron-orbit.
+   ```
+
+   On macOS, TextEdit -> New Document -> type the sentence -> File -> Export as PDF works.
+
+2. In the admin session, open:
+
+   ```text
+   /admin/documents
+   ```
+
+3. Upload the PDF.
+4. Expected: the document table shows the PDF with `source_type=pdf`, `status=indexed`, and a
+   non-zero chunk count.
+5. In a member session, ask:
+
+   ```text
+   What is the private demo keyword in the uploaded smoke test document?
+   ```
+
+6. Expected: the answer says `saffron-orbit` and cites the uploaded PDF.
+
+This proves production uploads join the serving corpus without touching the deterministic eval
+corpus.
+
+### 6. Admin Dashboard Shows Usage
+
+After the member queries above, refresh:
+
+```text
+/admin/dashboard
+```
+
+Expected:
+
+- Total query count increased.
+- Recent questions include the cited-answer/refusal/upload smoke-test questions.
+- Refusal rate and latency cards render.
+
+This proves `/ask` writes usage rows and the admin dashboard reads them.
+
+### 7. Delete Uploaded PDF And Re-Test
+
+1. In `/admin/documents`, delete the uploaded PDF.
+2. Click **Re-index serving corpus**.
+3. In the member session, ask again:
+
+   ```text
+   What is the private demo keyword in the uploaded smoke test document?
+   ```
+
+4. Expected: the app refuses or at least does not cite the deleted uploaded PDF.
+
+This proves uploaded documents can be removed from the serving corpus.
+
+### 8. Invite Signup
+
+1. In `/admin/invites`, generate a member invite.
+2. Copy the invite code when it is shown. It is shown once.
+3. Open a private/incognito window and go to:
+
+   ```text
+   /signup
+   ```
+
+4. Sign up with a new test email, password, and the invite code.
+5. Expected: signup redirects to the chat screen, and the new member can ask a course-material
+   question.
+
+This proves invite-gated user creation works.
+
+### 9. Persistence Reminder
+
+If no storage bucket / persistent storage is attached, these live-test side effects are temporary:
+
+- uploaded PDFs
+- invite codes
+- new signed-up users
+- usage rows
+- Chroma collections under `/data`
+
+The Space still works after restart because bootstrapping re-seeds the eval corpus, but admin-created
+production state is lost.
+
+## Why Hugging Face Spaces
+
+We deployed this as a Docker Hugging Face Space because it is the smallest course-friendly path to a
+public, reproducible ML demo:
+
+- It gives a public HTTPS URL that is easy to submit and record in the demo video.
+- It can run the same Docker image and FastAPI app used locally, with no special Gradio rewrite.
+- It has built-in Git-based deploys, logs, variables, and secrets.
+- It sits close to the ML ecosystem and handles the local embedding-model download/cache path cleanly.
+- The free CPU path is enough for this Week 2 slice because generation is delegated to Nebius and
+  embeddings are local/small.
+
+This is not a hard architectural dependency. The app can be deployed on another Docker-capable host
+because it is a normal FastAPI service started by `scripts/start_hf_space.sh` and configured by
+environment variables.
+
+Another host is reasonable later if you need stronger persistence, custom domains, autoscaling,
+background workers, managed Postgres, or managed vector storage. A separate app platform would also
+need its own decisions for HTTPS, secrets, a persistent `/data` equivalent or external database,
+health checks, build cache, container startup command, and cost controls. For the Week 2 submission,
+Hugging Face Spaces avoids that extra deployment scope while still proving the real app works online.
+
+Relevant Hugging Face docs:
+
+- Docker Spaces: <https://huggingface.co/docs/hub/spaces-sdks-docker>
+- Spaces configuration reference: <https://huggingface.co/docs/hub/spaces-config-reference>
+- Storage bucket / `/data` mounting example: <https://huggingface.co/docs/hub/spaces-sdks-docker-label-studio>
 
 ## Local HTTP Login Testing
 
