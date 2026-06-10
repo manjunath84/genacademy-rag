@@ -301,7 +301,9 @@ def create_app(
         if serving_store is not None:
             def mutation():
                 serving_store.delete_doc(doc_id)
-                return serving_store.get_all_chunks()
+                # Filter locally: a lagging remote read must not resurrect the deleted
+                # doc into the in-memory index.
+                return [c for c in serving_store.get_all_chunks() if c.doc_id != doc_id]
 
             retriever.mutate_corpus(mutation)
         if doc.get("stored_path"):
@@ -333,21 +335,27 @@ def build_default_app() -> FastAPI:
     from genacademy_rag.core.providers import build_provider
     from genacademy_rag.core.reranker import build_reranker
     from genacademy_rag.core.retriever import DEFAULT_CANDIDATE_K, HybridRetriever
-    from genacademy_rag.core.vectorstore import ChromaStore
+    from genacademy_rag.core.vectorstore import ChromaStore, build_vectorstore
 
     s = Settings.from_env()
     provider = build_provider(s)
-    # eval collection: pinned corpus used by eval scripts — NEVER written to by uploads
+    # eval collection: pinned corpus used by eval scripts — NEVER written to by uploads.
+    # Always local Chroma: the deterministic eval must not depend on a remote store.
     eval_store = ChromaStore(persist_dir=s.chroma_dir, collection="eval")
     chunks = eval_store.get_all_chunks()
-    # serving collection: grows with admin uploads
-    serving = ChromaStore(persist_dir=s.chroma_dir, collection="serving")
-    if not serving.get_all_chunks():    # seed once from the pinned eval chunks
+    # serving collection: grows with admin uploads; swappable via GENACADEMY_VECTORSTORE.
+    serving = build_vectorstore(s, collection="serving")
+    serving_chunks = serving.get_all_chunks()
+    if not serving_chunks:              # seed once from the pinned eval chunks
         serving.upsert(chunks, provider.embed([c.text for c in chunks]))
+        # Build the index from the local seed list, not a re-read: a remote store
+        # (Pinecone) is eventually consistent, so an immediate re-read can return []
+        # and boot a retriever that refuses every question.
+        serving_chunks = chunks
     retriever = HybridRetriever(
         store=serving,
         provider=provider,
-        all_chunks=serving.get_all_chunks(),
+        all_chunks=serving_chunks,
         top_k=s.top_k,
         candidate_k=DEFAULT_CANDIDATE_K,
         reranker=build_reranker(s),
@@ -374,7 +382,13 @@ def build_default_app() -> FastAPI:
 
         def mutation():
             pipe.commit(prepared)
-            return serving.get_all_chunks()
+            # Union with the just-committed chunks: a remote store's read can lag the
+            # write, and a chunk missing from the in-memory index is unsearchable
+            # (the retriever drops dense hits whose id it does not know).
+            new_chunks = [c for item in prepared for c in item.chunks]
+            new_ids = {c.chunk_id for c in new_chunks}
+            current = [c for c in serving.get_all_chunks() if c.chunk_id not in new_ids]
+            return current + new_chunks
 
         retriever.mutate_corpus(mutation)
 
