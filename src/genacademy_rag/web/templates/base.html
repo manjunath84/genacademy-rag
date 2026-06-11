@@ -8,28 +8,29 @@
   <script src="https://unpkg.com/htmx.org@1.9.12"></script>
   <script defer src="https://unpkg.com/alpinejs@3.14.1/dist/cdn.min.js"></script>
   <style>
-    /* GenAcademy house theme: cream paper + 40px grid + editorial curation desk. */
+    /* GenAcademy house theme: soft green-white paper + editorial curation desk. */
     :root{
-      --paper:#FDFCEF;
-      --ink:#1F2429;
-      --accent:#C8A261;
-      --dark:#1E3A5F;
-      --grid:rgba(232,228,208,.4);
-      --code-bg:#F5F2DA;
-      --rule:#d9d4b8;
-      --mute:#555555;
-      --mute2:#888888;
+      --paper:#F5F6F1;
+      --ink:#202629;
+      --accent:#C8A76A;
+      --dark:#202629;
+      --grid:rgba(214,222,211,.16);
+      --code-bg:#F4EFDE;
+      --rule:#DDE3D7;
+      --mute:#66706B;
+      --mute2:#8B938D;
       --warn:#C00;
 
       /* Curation Desk palette */
-      --sage-text:#2E4A35;
-      --sage-bg:#E8EFE9;
-      --sage-border:#BDD2C0;
-      --mineral-text:#1E3A5F;
-      --mineral-bg:#EAF0F6;
-      --mineral-border:#BACDDB;
-      --brass-bg:#F5F2DA;
-      --brass-border:#C8A261;
+      --sage-text:#314F37;
+      --sage-hero:#70896D;
+      --sage-bg:#EAF1E9;
+      --sage-border:#C9D8C7;
+      --mineral-text:#25496D;
+      --mineral-bg:#E7EEF5;
+      --mineral-border:#C6D6E2;
+      --brass-bg:#F4EFDE;
+      --brass-border:#C8A76A;
     }
     html,body{min-height:100%}
     body{
@@ -61,20 +62,20 @@
     /* Cards */
     .gc-card{
       background:#ffffff;
-      border:1px solid #d9d4b8;
+      border:1px solid var(--rule);
       border-radius:8px;
-      box-shadow:0 4px 20px -2px rgba(15,20,25,0.04), 0 2px 6px -1px rgba(15,20,25,0.02);
+      box-shadow:0 18px 48px rgba(36,43,39,0.07), 0 2px 8px rgba(36,43,39,0.03);
     }
     .gc-card-soft{
       background:#ffffff;
-      border:1px solid #e2ddc0;
+      border:1px solid var(--rule);
       border-radius:8px;
-      box-shadow:0 2px 8px rgba(15,20,25,0.03);
+      box-shadow:0 8px 24px rgba(36,43,39,0.04);
     }
 
     /* Inputs */
     .gc-input{
-      border:1px solid #d9d4b8;
+      border:1px solid #CBD6C8;
       border-radius:999px;
       background:#fff;
       color:var(--ink);
@@ -122,12 +123,12 @@
     /* Nav chips */
     .gc-chip{
       display:inline-flex;align-items:center;background:#ffffff;color:var(--ink);
-      border:1px solid #d9d4b8;border-radius:999px;font-weight:500;
+      border:1px solid var(--rule);border-radius:999px;font-weight:500;
       transition:all 0.15s ease;
     }
     .gc-chip:hover{
       background:var(--paper);
-      border-color:#c0bba1;
+      border-color:var(--sage-border);
     }
     .gc-chip-current{
       background:var(--mineral-bg);
@@ -143,7 +144,7 @@
 
     /* Suggestion pills */
     .gc-pill{
-      border:1px solid #d9d4b8;
+      border:1px solid var(--rule);
       border-radius:999px;
       background:#ffffff;
       color:var(--ink);
@@ -153,12 +154,12 @@
     }
     .gc-pill:hover{
       background:var(--paper);
-      border-color:#c0bba1;
+      border-color:var(--sage-border);
       transform:translateY(-1px);
     }
 
     /* Status badges */
-    .gc-badge{display:inline-flex;align-items:center;gap:.4em;border:1px solid #d9d4b8;border-radius:999px;font-weight:600}
+    .gc-badge{display:inline-flex;align-items:center;gap:.4em;border:1px solid var(--rule);border-radius:999px;font-weight:600}
     .gc-badge-high{background:var(--sage-bg);color:var(--sage-text);border-color:var(--sage-border)}
     .gc-badge-mid{background:#FFF9DB;color:#8A6D0F;border-color:#FFE066}
     .gc-badge-low{background:#F1F3F5;color:#495057;border-color:#CED4DA}
@@ -166,7 +167,7 @@
 
     /* Evidence cards */
     .gc-source{
-      border:1px solid #e2ddc0;
+      border:1px solid var(--rule);
       border-radius:8px;
       background:#ffffff;
       box-shadow:0 1px 3px rgba(0,0,0,0.02);
@@ -174,7 +175,7 @@
     }
     .gc-source:hover{
       border-color:var(--sage-border);
-      box-shadow:0 2px 8px rgba(122,139,123,0.06);
+      box-shadow:0 2px 8px rgba(112,137,109,0.08);
     }
     .gc-source>summary{cursor:pointer;list-style:none}
     .gc-source>summary::-webkit-details-marker{display:none}
@@ -207,7 +208,7 @@
       background:var(--sage-text);border-radius:50%;
     }
     .gc-mm{
-      border:1px solid #e2ddc0;
+      border:1px solid var(--rule);
       border-radius:8px;
       background:#ffffff;
       box-shadow:0 1px 3px rgba(0,0,0,0.02);
