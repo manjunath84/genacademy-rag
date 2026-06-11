@@ -1,7 +1,7 @@
 [project]
 name = "genacademy-rag"
 version = "0.1.0"
-description = "Add your description here"
+description = "Grounded, cited RAG assistant for Gen Academy cohort materials — hybrid retrieval, eval-gated quality, honest refusals"
 authors = [
     { name = "manjunath84", email = "manjunath84@gmail.com" }
 ]

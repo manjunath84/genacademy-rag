@@ -5,11 +5,11 @@ Everything there applies to Claude Code with no exceptions.
 
 Quick pointers:
 - **Constitution:** `specs/mission.md` · `specs/tech-stack.md` · `specs/roadmap.md`
-- **Design (under external review):** `docs/design.md`
+- **Design (review incorporated; implemented):** `docs/design.md`
 - **Decision reasoning:** `docs/architecture-decisions.md`
 
 Non-negotiables (full list in `AGENTS.md`):
-1. No code until the implementation plan is approved (we're pre-plan: design under review).
+1. No code until the implementation plan is approved (applies to every new slice).
 2. Builder ≠ reviewer — a different model / fresh context reviews every non-trivial change.
 3. Evidence before "done" — show `ruff` + `pytest` output, not "it should work".
 4. Pure core / thin view; citations captured at ingest; refusal path is load-bearing.

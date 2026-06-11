@@ -4,8 +4,9 @@
 tool-neutral source of truth. Per-tool files (`CLAUDE.md`, etc.) are thin mirrors that point here.
 Rules do not change with the tool.
 
-*Status: draft, in force now. The design it governs (`docs/design.md`) is pending external review;
-update this file if review changes the architecture.*
+*Status: in force. The design it governs (`docs/design.md`) was externally reviewed and has shipped
+(Phases 0–2 live on the Hugging Face Space as of 2026-06-11); update this file if the architecture
+moves.*
 
 ---
 
@@ -18,9 +19,9 @@ privacy thesis). Full design: `docs/design.md`. Decision reasoning: `docs/archit
 
 ## 2. The gates (no skipping)
 
-1. **No code until the plan is approved.** Flow: brainstorm → `docs/design.md` (spec) → reviewed →
-   implementation plan → build. Architecture is settled *before* implementation. We are currently
-   **pre-plan** (design under review).
+1. **No code until the plan is approved.** Flow: brainstorm → design/spec → reviewed →
+   implementation plan → build. Architecture is settled *before* implementation. This gate applies
+   to every new slice, not just the original build (which shipped through it).
 2. **Builder is never the sole judge.** The agent that writes code does **not** get the last word on
    whether it's correct or done. A **different model or a fresh context** reviews every non-trivial
    change. (Claude builds → Codex/other reviews, or vice-versa. Never one context grading itself.)
@@ -87,6 +88,7 @@ privacy thesis). Full design: `docs/design.md`. Decision reasoning: `docs/archit
 - `specs/mission.md` — why · audience · in/out of scope.
 - `specs/tech-stack.md` — layers + binding guardrails.
 - `specs/roadmap.md` — phases, MUST vs SHOULD, risk caps.
-- `docs/design.md` — full design (under external review).
+- `docs/design.md` — full design (review incorporated; implemented).
 - `docs/architecture-decisions.md` — locked stack decisions + reasoning.
-- `docs/decisions/` — ADRs for significant choices made *during* the build.
+- `docs/phase{0,1,2}-decisions-and-tradeoffs.md` — decisions made *during* the build, per phase.
+- `docs/project-context.md` — one-file repo primer (architecture, config, contracts, status).

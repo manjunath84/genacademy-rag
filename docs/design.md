@@ -4,7 +4,8 @@
 doc. Deep reasoning behind the locked stack: [`architecture-decisions.md`](architecture-decisions.md).
 Independent review folded in: [`design-review.md`](design-review.md) (Kimchi, 2026-06-07).*
 
-**Date:** 2026-06-07 · **Status:** review incorporated → **plan-ready pending the §9 spike.**
+**Date:** 2026-06-07 · **Status:** review incorporated; spike done (2026-06-08); **implemented —
+Phases 0–2 shipped.** Kept as the design of record; see `docs/project-context.md` for as-built state.
 
 ---
 
@@ -281,6 +282,9 @@ Against the **live Nebius/Pinecone endpoints and the real corpus**:
 
 ## 11. Deliverables checklist (handout)
 
+*(Historical — written pre-build. Live tracking moved to `specs/roadmap.md` § Cross-phase
+deliverables.)*
+
 - [ ] Working **hybrid-retrieval** cited Q&A bot with refusal path (Phase 0).
 - [ ] 15-question evaluation report (recall/precision/MRR + faithfulness + failure taxonomy).
 - [ ] Demo video ≤5 min (walkthrough + how AI tools were used + live result).
@@ -292,4 +296,5 @@ Against the **live Nebius/Pinecone endpoints and the real corpus**:
 
 ---
 
-*Next: run the §9 spike → `writing-plans` for the phase-by-phase implementation plan.*
+*(This "next step" completed 2026-06-08; the plan was written and executed — see `specs/roadmap.md`
+for shipped state.)*

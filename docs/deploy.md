@@ -55,7 +55,7 @@ Add these as **Variables**, not secrets:
 ```text
 GENACADEMY_PROVIDER=nebius
 NEBIUS_BASE_URL=https://api.tokenfactory.nebius.com/v1/
-NEBIUS_MODEL=<your-validated-nebius-model>
+NEBIUS_MODEL=Qwen/Qwen3-30B-A3B-Instruct-2507
 GENACADEMY_DATA_DIR=/data
 GENACADEMY_SECURE_COOKIES=true
 GENACADEMY_VECTORSTORE=pinecone
@@ -64,10 +64,13 @@ GENACADEMY_PINECONE_CLOUD=aws
 GENACADEMY_PINECONE_REGION=us-east-1
 GENACADEMY_EMBEDDINGS=local
 GENACADEMY_EMBED_DIM=384
-GENACADEMY_RERANK_ENABLED=false
+GENACADEMY_RERANK_ENABLED=true
+GENACADEMY_RERANK_POOL=20
+GENACADEMY_RERANK_LOCAL_FILES_ONLY=true
 ```
 
-Use the same `NEBIUS_MODEL` you validated locally or were given for the course.
+`NEBIUS_MODEL` is the benchmarked serving model (answer-shape latency ~1.5 s mean, 10/10 JSON
+grader parses — see `eval/REPORT.md`). If you swap it, re-validate JSON-mode grading first.
 
 With these settings, the live **serving** corpus uses Pinecone. The deterministic eval bootstrap
 still uses local Chroma under `/data/chroma` so retrieval eval behavior stays independent of the
@@ -196,7 +199,7 @@ After the smoke test passes, the next task is live login/query testing.
 | --- | --- |
 | `GENACADEMY_PROVIDER` | `nebius` for the mandatory-provider demo, or `openrouter` for dev fallback. |
 | `NEBIUS_BASE_URL` | `https://api.tokenfactory.nebius.com/v1/` |
-| `NEBIUS_MODEL` | The validated generation model used for the demo. |
+| `NEBIUS_MODEL` | `Qwen/Qwen3-30B-A3B-Instruct-2507` (benchmarked: answer latency + JSON grader gate). |
 | `GENACADEMY_DATA_DIR` | `/data` |
 | `GENACADEMY_SECURE_COOKIES` | `true` |
 | `GENACADEMY_VECTORSTORE` | `pinecone` for the live serving corpus. |
@@ -205,6 +208,9 @@ After the smoke test passes, the next task is live login/query testing.
 | `GENACADEMY_PINECONE_REGION` | `us-east-1` |
 | `GENACADEMY_EMBEDDINGS` | `local`; first-boot eval corpus seeding refuses non-local embeddings. |
 | `GENACADEMY_EMBED_DIM` | `384`; must match the Pinecone index dimension for local embeddings. |
+| `GENACADEMY_RERANK_ENABLED` | `true`; the model is baked into the image, so this is safe to enable. |
+| `GENACADEMY_RERANK_POOL` | `20`; validated cap — keeps the recall win, bounds rerank compute. |
+| `GENACADEMY_RERANK_LOCAL_FILES_ONLY` | `true`; never download the rerank model at runtime. |
 
 ## First Boot
 
@@ -272,8 +278,8 @@ generation tokens or creating uploaded test data.
 
 1. **Space config:** confirm secrets and variables are set, especially `GENACADEMY_SESSION_SECRET`,
    `NEBIUS_API_KEY`, `PINECONE_API_KEY`, `GENACADEMY_SECURE_COOKIES=true`,
-   `GENACADEMY_VECTORSTORE=pinecone`, `GENACADEMY_EMBEDDINGS=local`, and
-   `GENACADEMY_RERANK_ENABLED=false`.
+   `GENACADEMY_VECTORSTORE=pinecone`, `GENACADEMY_EMBEDDINGS=local`,
+   `GENACADEMY_RERANK_ENABLED=true`, and `GENACADEMY_RERANK_POOL=20`.
 2. **Logs:** wait for the Space to become **Running**. Check for bootstrap success, uvicorn startup,
    and no Pinecone auth/dimension errors.
 3. **HTTP smoke:** run `scripts/smoke_http.py` against the Space URL. This proves boot, templates,
@@ -463,29 +469,29 @@ corpus can be backed by Pinecone. Admin-created production state is still lost u
 are on persistent storage. If old uploaded vectors remain in Pinecone after `/data` is wiped, the app
 filters them out because there is no live SQLite document row for those uploads.
 
-## Rerank Demo Toggle Recommendation
+## Rerank In The Live Space
 
-Keep `GENACADEMY_RERANK_ENABLED=false` for the normal Hugging Face Space demo unless the rerank model
-has been deliberately provisioned in the image/cache. The measured rerank slice improved retrieval
-quality, but it also added material latency:
+Rerank is **enabled** in the live Space (since 2026-06-11): the cross-encoder
+`cross-encoder/ms-marco-MiniLM-L6-v2` is baked into the Docker image at build time
+(`scripts/provision_rerank_model.py` layer in the `Dockerfile`), so rerank-enabled boots perform no
+runtime model download. Keep `GENACADEMY_RERANK_LOCAL_FILES_ONLY=true` so startup stays
+deterministic.
 
-| Run | recall@k | precision@k | MRR | p95 retrieval latency |
-| --- | ---: | ---: | ---: | ---: |
-| Baseline hybrid | 0.67 | 0.22 | 0.55 | 286 ms |
-| Hybrid + rerank | 0.79 | 0.25 | 0.58 | 886 ms |
+Measured retrieval delta at the shipped configuration (`GENACADEMY_RERANK_POOL=20`, full tables and
+latency caveats in `eval/phase2-rerank-delta.md`):
 
-The right demo stance is:
+| Run | recall@k | precision@k | MRR |
+| --- | ---: | ---: | ---: |
+| Baseline hybrid | 0.67 | 0.22 | 0.55 |
+| Hybrid + rerank, pool=20 | 0.79 | 0.25 | 0.58 |
 
-- **Default live Space:** keep rerank off. This keeps the browser demo responsive and avoids a
-  rerank-model cache failure in the Docker image.
-- **Accuracy story:** show `eval/phase2-rerank-delta.md` and the Compass operating-model diagram as
-  evidence that rerank was implemented, measured, and intentionally left default-off.
-- **Optional quality demo:** enable rerank only in a controlled environment where
-  `cross-encoder/ms-marco-MiniLM-L6-v2` is already present, then use one or two known questions to
-  show the better ranking. Do not discover this live during the final demo.
-- **If enabling on Hugging Face:** rebuild or otherwise provision the rerank model first, then set
-  `GENACADEMY_RERANK_ENABLED=true`. Leaving `GENACADEMY_RERANK_LOCAL_FILES_ONLY=true` is safer for
-  deterministic startup; setting it false can trigger downloads during boot and make the demo brittle.
+The pool cap keeps the full-union recall win while reducing rerank compute; local retrieval-latency
+runs are noisy at n=15 (see the delta doc), so treat the live `/admin/dashboard` `latency_ms` p95 as
+the operative number — budget: < 8 s hard, ~6 s goal.
+
+**Rollback / kill switch:** set `GENACADEMY_RERANK_ENABLED=false` (or revert `NEBIUS_MODEL`) in
+Space variables — the Space restarts with the change, **no rebuild needed**. If latency creeps,
+lower `GENACADEMY_RERANK_POOL` (e.g. 20 → 10) before reaching for the kill switch.
 
 ## Why Hugging Face Spaces
 

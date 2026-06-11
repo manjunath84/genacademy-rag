@@ -59,11 +59,20 @@ behind seams so improvements can be swapped in one at a time.
    PR #3 improved retrieval from recall@k 0.67 to 0.79, precision@k 0.22 to 0.25, and MRR 0.55 to
    0.58. The cost was material: CPU-pinned p95 retrieval latency rose from about 286 ms to 886 ms in
    the committed run. That makes default-off the right posture.
+   *Update 2026-06-11:* the posture flipped once the actual blocker was fixed. Baking the
+   cross-encoder into the Docker image (PR #16) plus capping the pool (`GENACADEMY_RERANK_POOL=20`)
+   kept the full recall win at lower latency, and rerank now ships **enabled** in the live Space.
+   The config default stays `false` (deterministic local/eval baseline), with the env var as the
+   no-rebuild kill switch.
 
 5. **Chunking is still the next quality lever.**
    The current eval failures repeatedly point at table rows, section headers, and answers split across
    fixed-size chunk boundaries. Section-aware chunking is likely a better next Phase 2 slice than more
    retrieval tuning.
+   *Update 2026-06-11:* the slice was built and measured — and lost (recall 0.67→0.64, MRR
+   0.55→0.34; `eval/phase2-section-aware-chunking-delta.md`). Fixed chunking stays the default. The
+   diagnosis still stands (q5/q7-class boundary misses persist), but heading-bounded chunks were the
+   wrong remedy, partly confounded by the embedder's 256-token window truncating 1500-char chunks.
 
 ## Evaluation
 
@@ -222,9 +231,10 @@ behind seams so improvements can be swapped in one at a time.
    rejection, admin revocation, refusal recovery, XSS escaping) closed the gap before merge.
 
 5. **A UI that hardcodes measured numbers will eventually lie.**
-   The trust sidebar bakes in `recall@k 0.67` and `refusal 0.73`. The moment the eval baseline
-   moves, the UI silently misreports it. Measured values shown to users should be injected from the
-   eval output, not typed into templates. (Known follow-up.)
+   The trust sidebar baked in `recall@k 0.67` and `refusal 0.73` — and the prediction came true
+   within days: the rerank-enablement PR moved the frozen-eval refusal score to 1.00 and review had
+   to catch the stale badge by hand. Measured values shown to users should be injected from the
+   eval output, not typed into templates. (Still a follow-up; the badge is hand-synced for now.)
 
 ## Deployment And Latency Budgets
 
@@ -236,9 +246,10 @@ behind seams so improvements can be swapped in one at a time.
    reason than the one that motivated it.
 
 2. **Itemize the latency budget before swapping components.**
-   A request is embed (~12 ms) + retrieval (286 ms, or 886 ms with rerank) + grader LLM call
-   (~0.5–1 s) + answer LLM call (~0.5–4 s). The two LLM calls dominate and vary the most; that is
-   where freed budget comes from. Optimizing the wrong stage looks productive and changes nothing.
+   A request is embed (~12 ms) + retrieval (hundreds of ms; rerank multiplies it — see
+   `eval/phase2-rerank-delta.md` for the measured runs) + grader LLM call (~0.5–1 s) + answer LLM
+   call (~0.5–4 s). The two LLM calls dominate and vary the most; that is where freed budget comes
+   from. Optimizing the wrong stage looks productive and changes nothing.
 
 3. **Locally measured latency does not transfer to deploy hardware.**
    The committed 886 ms rerank p95 was measured on a development machine; the Space CPU is weaker
@@ -282,7 +293,10 @@ behind seams so improvements can be swapped in one at a time.
 
 ## Next Best Learning Target
 
-Section-aware chunking is the highest-signal next experiment. The current failure table repeatedly
-points at fixed-size chunk boundaries, table context loss, and section headers separated from their
-content. The right next artifact is a design and implementation plan for `SectionAwareChunker`, with
-the same before/after eval delta discipline used for reranking.
+Section-aware chunking was run as the next experiment — and measured as a regression
+(`eval/phase2-section-aware-chunking-delta.md`: recall 0.67→0.64, MRR 0.55→0.34, partly confounded
+by embedder tail-truncation at 1500 chars). The boundary failures it targeted (q5-class compact
+table rows, multi-document spans outside top-5) remain the open quality problem. The
+highest-signal next experiments, in order: re-run section chunking at `max_chars=1000` to remove
+the truncation confound; adjacent-chunk stitching before generation; and `top_k`/query-decomposition
+for the multi-document misses — each with the same before/after eval-delta discipline.

@@ -198,8 +198,9 @@ This project intentionally diverges from the handout sample solution:
 - Hugging Face `/data` is ephemeral unless paid persistent storage is attached, so users/uploads/usage reset on restart.
 - Pinecone serving vectors persist outside `/data`; uploaded-document vectors are filtered if the
   matching SQLite document row disappears after a restart.
-- The rerank model is now baked into the Docker image; live Space enablement still depends on the
-  Step-4 Space variable update and rebuild.
+- Rerank is enabled in the live Space (model baked into the Docker image, `GENACADEMY_RERANK_POOL=20`);
+  current eval at this configuration: recall@k 0.79 / precision@k 0.25 / MRR 0.58 / refusal
+  correctness 1.00 (`eval/REPORT.md` — see its judge-model caveat for the faithfulness figure).
 - The live HTTP smoke proves boot and login-page rendering; browser testing is still needed after each deploy for actual query and answer-card behavior.
 
 ## Final Submission Notes
