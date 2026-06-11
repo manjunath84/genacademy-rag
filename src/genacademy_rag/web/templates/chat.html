@@ -20,122 +20,165 @@
 {% endmacro %}
 
 {% block body %}
-<main class="mx-auto max-w-6xl px-4 py-8 lg:px-8">
-  <header class="mb-7 flex flex-col gap-4 gc-rule border-t-0 pb-6 md:flex-row md:items-end md:justify-between"
-          style="border-bottom:2px solid var(--ink)">
-    <div class="space-y-1.5">
-      <p class="gc-eyebrow">Cohort knowledge assistant</p>
-      <h1 class="gc-h1 gc-bar text-4xl">GenAcademy Compass</h1>
-      <p class="max-w-2xl pt-1 text-sm" style="color:var(--mute)">Evidence-first answers from the cohort materials.</p>
+<main class="mx-auto max-w-7xl px-4 py-8 lg:px-8">
+  <header class="mb-8 flex flex-col gap-4 border-b border-[var(--rule)] pb-5 md:flex-row md:items-center md:justify-between">
+    <div class="flex items-center gap-3">
+      <div class="flex h-10 w-10 items-center justify-center rounded-full border border-[var(--rule)] bg-white text-[var(--mineral-text)] font-mono font-bold text-lg shadow-sm">C</div>
+      <div class="space-y-0.5">
+        <h1 class="gc-serif text-2xl font-bold tracking-tight text-[var(--ink)]">GenAcademy Compass</h1>
+        <p class="text-[10px] font-bold tracking-widest text-[var(--mute)] uppercase">Cohort Intelligence</p>
+      </div>
     </div>
-    <div class="flex flex-wrap items-center gap-2.5 text-sm">
+    <div class="flex flex-wrap items-center gap-2 text-xs">
+      <a class="gc-chip gc-chip-current px-3.5 py-2" href="/">Ask</a>
       {% if role == "admin" %}
-      <a class="gc-chip px-3.5 py-2" href="/admin/documents">Documents</a>
+      <a class="gc-chip px-3.5 py-2" href="/admin/documents">Sources</a>
       <a class="gc-chip px-3.5 py-2" href="/admin/dashboard">Dashboard</a>
       {% endif %}
       <form method="post" action="/logout" class="inline">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-        <button class="gc-chip-ghost text-xs" title="End this session">sign out</button>
+        <button class="gc-chip px-3.5 py-2 text-[var(--mute)] hover:text-[var(--ink)]" title="End this session">Sign out</button>
       </form>
     </div>
   </header>
 
-  <section class="grid gap-7 lg:grid-cols-[minmax(0,1fr)_18rem]">
-    <div class="space-y-5">
+  <div class="mb-10 grid gap-6 md:grid-cols-[1fr_22rem] items-center">
+    <div class="space-y-3">
+      <h2 class="gc-serif text-5xl md:text-7xl font-normal leading-[0.95] tracking-tight text-[var(--ink)]">
+        Answers that feel calm,<br>cited, and <span class="italic text-[var(--sage-text)]">course-grounded</span>.
+      </h2>
+      <p class="max-w-xl text-sm" style="color:var(--mute)">Compass keeps the interface quiet so the evidence can do the work. Evidence-first answers from the cohort materials.</p>
+    </div>
+    <div class="gc-card p-5 space-y-4">
+      <div class="flex items-start gap-3">
+        <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--mineral-bg)] text-[var(--mineral-text)] font-mono font-bold text-sm">R</div>
+        <div class="space-y-0.5">
+          <h4 class="font-bold text-xs uppercase tracking-wider text-[var(--ink)]">Retrieval quality</h4>
+          <p class="text-xs text-[var(--mute)]">Recall and source coverage stay visible.</p>
+        </div>
+      </div>
+      <div class="flex items-start gap-3">
+        <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--mineral-bg)] text-[var(--mineral-text)] font-mono font-bold text-sm">F</div>
+        <div class="space-y-0.5">
+          <h4 class="font-bold text-xs uppercase tracking-wider text-[var(--ink)]">Refusal posture</h4>
+          <p class="text-xs text-[var(--mute)]">Unsupported questions get an honest stop.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <section class="grid min-w-0 gap-7 lg:grid-cols-[18rem_1fr_18rem] items-start">
+    <aside class="order-3 min-w-0 lg:order-1 space-y-4">
+      <div class="space-y-1">
+        <p class="gc-eyebrow">Ready Source</p>
+        <h3 class="gc-serif text-2xl font-bold text-[var(--ink)]">The Shelf</h3>
+      </div>
+      <div class="space-y-3">
+        {% if result and not result.refused and result.sources %}
+          {% for s in result.sources %}
+          <details class="gc-source text-sm" {% if loop.first %}open{% endif %}>
+            <summary class="p-3 select-none">
+              <div class="flex items-center justify-between mb-1.5">
+                <span class="text-[10px] font-bold uppercase tracking-wider text-[var(--mute)]">Source [{{ loop.index }}]</span>
+                <span class="text-[10px] font-bold text-[var(--sage-text)] bg-[var(--sage-bg)] px-1.5 py-0.5 rounded-full">{{ s.meta_label }}</span>
+              </div>
+              {% if s.url %}
+                <a href="{{ s.url }}" target="_blank" rel="noopener" class="gc-link block break-words font-bold text-xs leading-snug">{{ s.title }}{% if s.range_label %} · {{ s.range_label }}{% endif %} ↗</a>
+              {% else %}
+                <span class="font-bold text-xs text-[var(--ink)] block break-words leading-snug">{{ s.title }}{% if s.range_label %} · {{ s.range_label }}{% endif %}</span>
+              {% endif %}
+            </summary>
+            <div class="gc-snippet mx-3 mb-3 p-3 text-[11px] leading-relaxed text-[var(--ink)]">{{ s.snippet }}</div>
+          </details>
+          {% endfor %}
+        {% else %}
+          <div class="gc-card-soft p-4 space-y-1">
+            <h4 class="font-bold text-sm text-[var(--ink)]">Week 2 Project Handout</h4>
+            <p class="text-xs text-[var(--mute)]">RAG evaluation, citations, failure analysis.</p>
+          </div>
+          <div class="gc-card-soft p-4 space-y-1">
+            <h4 class="font-bold text-sm text-[var(--ink)]">Agentic AI Resources</h4>
+            <p class="text-xs text-[var(--mute)]">Curated links and cohort reference material.</p>
+          </div>
+          <div class="gc-card-soft p-4 space-y-1">
+            <h4 class="font-bold text-sm text-[var(--ink)]">Session Notes</h4>
+            <p class="text-xs text-[var(--mute)]">Embeddings, retrieval, rerank, and chunking.</p>
+          </div>
+        {% endif %}
+      </div>
+    </aside>
+
+    <div class="order-1 min-w-0 lg:order-2 space-y-5">
       <form method="post" action="/ask" class="gc-card p-4" x-data="{loading:false}" @submit="loading=true">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <div class="flex flex-col gap-3 sm:flex-row">
           <input name="question" value="{{ question or '' }}" {% if not result %}autofocus{% endif %}
                  placeholder="Ask about assignments, retrieval, embeddings, evals, or course logistics"
-                 class="gc-input min-h-11 flex-1 px-3.5 py-2.5 text-sm">
-          <button class="gc-btn-primary min-w-[120px] px-6 py-2.5 text-sm" :disabled="loading">
-            <span x-show="!loading">Ask &rarr;</span>
+                 class="gc-input min-h-11 w-full min-w-0 flex-1 px-4 py-2.5 text-sm">
+          <button class="gc-btn-primary min-w-[120px] w-full px-6 py-2.5 text-sm sm:w-auto" :disabled="loading">
+            <span x-show="!loading">ASK</span>
             <span x-show="loading" x-cloak class="inline-flex items-center gap-2"><span class="gc-spin"></span> Retrieving&hellip;</span>
           </button>
         </div>
-        <p class="mt-2.5 text-xs" style="color:var(--mute)">Answers cite course sources &mdash; or refuse honestly when the materials don&rsquo;t support a claim.</p>
+        {% if not result %}
+        <p class="mt-2.5 text-[11px] pl-2 text-[var(--mute)]">Answers cite course sources &mdash; or refuse honestly when the materials don&rsquo;t support a claim.</p>
+        {% endif %}
       </form>
 
       {% if result %}
-      <article class="gc-card p-5 space-y-4" x-data="{copied:false}">
-        <p class="gc-eyebrow">You asked</p>
-        <p class="-mt-2 text-base font-bold" style="color:var(--ink)">{{ question }}</p>
-
-        <div class="flex flex-col gap-3 gc-rule pt-4 sm:flex-row sm:items-center sm:justify-between">
-          {% if result.refused %}
-            <span class="gc-badge gc-badge-refuse px-3 py-1 text-xs">Not in the materials</span>
-          {% else %}
-            <span class="gc-badge px-3 py-1 text-xs
-                         {% if bucket == 'high' %}gc-badge-high{% elif bucket == 'medium' %}gc-badge-mid{% else %}gc-badge-low{% endif %}"
-                  title="Reflects the grader's answerability signal ({{ result.confidence }}/5), not a fact-checked probability">
-              {{ bucket|capitalize }} confidence
-            </span>
-          {% endif %}
-
-          <div class="flex flex-wrap items-center gap-2 text-sm">
-            {% if not result.refused %}
-            <button type="button" title="Copy answer" aria-label="Copy answer"
-                    class="gc-btn px-3 py-1 text-xs"
-                    @click="navigator.clipboard.writeText($refs.answer.innerText); copied = true; setTimeout(() => copied = false, 1500)">
-              <span x-show="!copied">copy</span><span x-show="copied" x-cloak>copied &check;</span>
-            </button>
-            {% endif %}
-            <form method="post" action="/ask" class="inline">
-              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-              <input type="hidden" name="question" value="{{ question }}">
-              <button title="Retry this question" class="gc-btn px-3 py-1 text-xs">retry</button>
-            </form>
-            {% if query_id %}
-            <div id="feedback-box" class="flex gap-2">
-              <form hx-post="/feedback" hx-target="#feedback-box" hx-swap="outerHTML" class="inline">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                <input type="hidden" name="query_id" value="{{ query_id }}">
-                <input type="hidden" name="verdict" value="1">
-                <button title="Good answer" aria-label="Good answer" class="gc-btn px-3 py-1 text-xs">👍</button>
-              </form>
-              <form hx-post="/feedback" hx-target="#feedback-box" hx-swap="outerHTML" class="inline">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                <input type="hidden" name="query_id" value="{{ query_id }}">
-                <input type="hidden" name="verdict" value="-1">
-                <button title="Bad answer" aria-label="Bad answer" class="gc-btn px-3 py-1 text-xs">👎</button>
-              </form>
-            </div>
-            {% endif %}
-          </div>
+      <article class="gc-card p-6 space-y-5" x-data="{copied:false}">
+        <div class="space-y-1">
+          <p class="gc-eyebrow">The Answer</p>
+          <p class="text-xs text-[var(--mute)]">You asked: <span class="font-semibold text-[var(--ink)]">{{ question }}</span></p>
         </div>
 
-        {% if result.refused %}
-          <p class="font-medium leading-relaxed" style="color:var(--warn)">{{ result.answer }}</p>
-          <div class="gc-rule pt-4">
-            <p class="mb-3 gc-eyebrow">Here's what the materials can answer</p>
-            {{ suggestion_pills() }}
+        <div class="pt-4 border-t border-[var(--rule)] space-y-4">
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <h2 class="gc-serif w-full text-2xl font-bold text-[var(--ink)] sm:w-auto">
+              {% if result.refused %}
+                Not found in materials
+              {% else %}
+                Grounded Answer
+              {% endif %}
+            </h2>
+            {% if result.refused %}
+              <span class="gc-badge gc-badge-refuse px-3 py-1 text-xs">Not in the materials</span>
+            {% else %}
+              <span class="gc-badge px-3 py-1 text-xs
+                           {% if bucket == 'high' %}gc-badge-high{% elif bucket == 'medium' %}gc-badge-mid{% else %}gc-badge-low{% endif %}"
+                    title="Reflects the grader's answerability signal ({{ result.confidence }}/5), not a fact-checked probability">
+                {{ bucket|capitalize }} confidence
+              </span>
+            {% endif %}
           </div>
-        {% else %}
-          <p class="whitespace-pre-wrap leading-relaxed" style="color:#1a212a" x-ref="answer">{{ result.answer }}</p>
 
-          {% if result.sources %}
-          <section class="gc-rule pt-4">
-            <p class="mb-3 gc-eyebrow">Sources ({{ result.sources|length }})</p>
-            <div class="space-y-2.5">
+          {% if result.refused %}
+            <p class="font-medium leading-relaxed text-sm text-[var(--warn)]">{{ result.answer }}</p>
+            <div class="pt-4 border-t border-[var(--rule)]">
+              <p class="mb-3 gc-eyebrow">Here's what the materials can answer</p>
+              {{ suggestion_pills() }}
+            </div>
+          {% else %}
+            <p class="break-words whitespace-pre-wrap leading-relaxed text-sm text-[var(--ink)]" data-answer-text>{{ result.answer }}</p>
+
+            {% if result.sources %}
+            <div class="space-y-3 mt-5 pt-4 border-t border-[var(--rule)]">
+              <p class="gc-eyebrow">Quoted evidence highlights</p>
               {% for s in result.sources %}
-              <details class="gc-source text-sm" {% if loop.first %}open{% endif %}>
-                <summary class="p-3">
-                  {% if s.url %}
-                    <a href="{{ s.url }}" target="_blank" rel="noopener" class="gc-link">{{ s.title }}{% if s.range_label %} · {{ s.range_label }}{% endif %} ↗</a>
-                  {% else %}
-                    <span class="font-bold" style="color:var(--ink)">{{ s.title }}{% if s.range_label %} · {{ s.range_label }}{% endif %}</span>
-                  {% endif %}
-                  <span class="text-xs" style="color:var(--mute)">— {{ s.meta_label }}</span>
-                </summary>
-                <div class="gc-snippet mx-3 mb-3 p-3 text-xs" style="color:#333">{{ s.snippet }}</div>
-              </details>
+              <div class="gc-source p-4 space-y-1.5" style="background:var(--brass-bg); border-left:3px solid var(--brass-border); border-color:var(--brass-border);">
+                <div class="flex items-center justify-between gap-3">
+                  <span class="min-w-0 break-words text-xs font-bold text-[var(--sage-text)]">{{ s.title }}</span>
+                  <span class="shrink-0 text-[10px] font-mono text-[var(--mute)]">{{ s.range_label or '' }}</span>
+                </div>
+                <p class="break-words text-xs leading-relaxed font-mono text-[var(--ink)]">{{ s.snippet }}</p>
+              </div>
               {% endfor %}
             </div>
-          </section>
+            {% endif %}
           {% endif %}
-        {% endif %}
+        </div>
 
-        <p class="gc-rule pt-3 text-xs" style="color:var(--mute)">AI-generated from course materials; it can make mistakes. Check the evidence above.</p>
+        <p class="pt-3 border-t border-[var(--rule)] text-[10px] text-[var(--mute)]">AI-generated from course materials; it can make mistakes. Check the evidence in the left panel.</p>
       </article>
       {% endif %}
 
@@ -147,25 +190,70 @@
       {% endif %}
     </div>
 
-    <aside class="space-y-4 text-sm">
-      <div class="gc-card-soft gc-trust p-5">
-        <p class="mb-3 pb-1.5 font-extrabold" style="color:var(--ink);border-bottom:2px solid var(--ink)">Trust posture</p>
-        <ul class="space-y-2.5" style="color:#333">
-          <li class="gc-tick">Cited answers when supported.</li>
-          <li class="gc-tick">Honest refusal when materials are insufficient.</li>
-          <li class="gc-tick">Evidence stays inspectable in the answer card.</li>
-        </ul>
-        <div class="mt-4 flex gap-2.5">
-          <div class="gc-mm flex-1 px-2 py-2 text-center">
-            <span class="block text-lg font-black" style="color:var(--ink)">0.67</span>
-            <span class="text-[11px] font-bold" style="color:var(--mute)">recall@k</span>
-          </div>
-          <div class="gc-mm flex-1 px-2 py-2 text-center">
-            <span class="block text-lg font-black" style="color:var(--ink)">0.73</span>
-            <span class="text-[11px] font-bold" style="color:var(--mute)">refusal</span>
-          </div>
+    <aside class="order-2 min-w-0 lg:order-3 space-y-4">
+      <div class="space-y-1">
+        <p class="gc-eyebrow">Before you use it</p>
+        <h3 class="gc-serif text-2xl font-bold text-[var(--ink)]">The Verdict</h3>
+      </div>
+      <div class="gc-card p-5 space-y-5" x-data="{copied:false}">
+        <div class="bg-[var(--mineral-bg)] border border-[var(--mineral-border)] rounded-lg p-4 text-center">
+          <span class="block text-3xl font-bold text-[var(--mineral-text)]">0.73</span>
+          <span class="text-[10px] font-bold uppercase tracking-wider text-[var(--mute)]">Refusal score</span>
+          <span class="mt-1 block text-[10px] text-[var(--mute)]">Frozen eval set</span>
         </div>
-        <p class="mt-3 text-[11px]" style="color:var(--mute2)">Measured on the frozen eval set.</p>
+
+        <ul class="space-y-3 text-xs" style="color:var(--ink)">
+          <li class="gc-tick flex items-start gap-2">
+            <span>
+              {% if result and result.sources %}
+                <strong>{{ result.sources|length }}</strong> source{{ 's' if result.sources|length != 1 else '' }} cited for this answer.
+              {% else %}
+                No sources cited yet.
+              {% endif %}
+            </span>
+          </li>
+          <li class="gc-tick flex items-start gap-2">
+            <span>Confidence reflects answerability, not truth probability.</span>
+          </li>
+          <li class="gc-tick flex items-start gap-2">
+            <span>Source quote stays close to the claim.</span>
+          </li>
+        </ul>
+
+        {% if result %}
+        <div class="pt-4 border-t border-[var(--rule)] flex flex-wrap gap-2">
+          {% if not result.refused %}
+          <button type="button" aria-label="Copy answer"
+                  class="gc-btn px-3 py-1.5 text-xs flex-1 text-center"
+                  @click="navigator.clipboard.writeText(document.querySelector('[data-answer-text]').innerText); copied = true; setTimeout(() => copied = false, 1500)">
+            <span x-show="!copied">Copy</span><span x-show="copied" x-cloak>Copied &check;</span>
+          </button>
+          {% endif %}
+
+          <form method="post" action="/ask" class="inline flex-1">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <input type="hidden" name="question" value="{{ question }}">
+            <button title="Retry this question" class="gc-btn w-full py-1.5 text-xs">Retry</button>
+          </form>
+
+          {% if query_id %}
+          <div id="feedback-result" class="flex flex-[2] gap-2">
+            <form hx-post="/feedback" hx-target="#feedback-result" hx-swap="outerHTML" class="inline flex-1">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <input type="hidden" name="query_id" value="{{ query_id }}">
+              <input type="hidden" name="verdict" value="1">
+              <button title="Mark as good answer" class="gc-btn w-full py-1.5 text-xs">Good</button>
+            </form>
+            <form hx-post="/feedback" hx-target="#feedback-result" hx-swap="outerHTML" class="inline flex-1">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <input type="hidden" name="query_id" value="{{ query_id }}">
+              <input type="hidden" name="verdict" value="-1">
+              <button title="Flag as bad answer" class="gc-btn w-full py-1.5 text-xs">Flag</button>
+            </form>
+          </div>
+          {% endif %}
+        </div>
+        {% endif %}
       </div>
     </aside>
   </section>

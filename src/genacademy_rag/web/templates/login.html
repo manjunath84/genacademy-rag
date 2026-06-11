@@ -3,20 +3,20 @@
 {% block body %}
 <main class="min-h-screen flex items-center justify-center px-4 py-10">
   <section class="w-full max-w-sm space-y-6">
-    <div class="space-y-2 text-center">
+    <div class="flex flex-col items-center space-y-2 text-center">
+      <div class="flex h-12 w-12 items-center justify-center rounded-full border border-[var(--rule)] bg-white text-[var(--mineral-text)] font-mono font-bold text-xl shadow-sm mb-2">C</div>
       <p class="gc-eyebrow">Cohort knowledge assistant</p>
-      <h1 class="gc-h1 text-3xl">GenAcademy Compass</h1>
-      <div class="mx-auto h-2.5 w-20" style="background:var(--accent);border:2px solid var(--ink)"></div>
+      <h1 class="gc-serif text-3xl font-bold tracking-tight text-[var(--ink)]">GenAcademy Compass</h1>
       <p class="pt-1 text-sm" style="color:var(--mute)">Evidence-first answers from the cohort materials.</p>
     </div>
     <form method="post" action="/login" class="gc-card p-6 space-y-4">
       {% if error %}<p class="text-sm font-semibold" style="color:var(--warn)">{{ error }}</p>{% endif %}
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <label class="block text-sm font-semibold" style="color:var(--ink)">Email
-        <input name="email" placeholder="email" class="gc-input mt-1 w-full px-3 py-2" value="member@genacademy.local">
+        <input name="email" placeholder="email" class="gc-input mt-1 w-full px-4 py-2" value="member@genacademy.local">
       </label>
       <label class="block text-sm font-semibold" style="color:var(--ink)">Password
-        <input name="password" type="password" placeholder="password" class="gc-input mt-1 w-full px-3 py-2">
+        <input name="password" type="password" placeholder="password" class="gc-input mt-1 w-full px-4 py-2">
       </label>
       <button class="gc-btn-primary w-full py-2.5">Sign in</button>
       <p class="text-center text-sm" style="color:var(--mute)"><a class="gc-link" href="/signup">Create account with invite code</a></p>
