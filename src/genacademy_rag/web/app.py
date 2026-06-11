@@ -145,6 +145,16 @@ def create_app(
         request.session["role"] = user["role"]
         return RedirectResponse("/", status_code=303)
 
+    @app.post("/logout")
+    def logout(
+        request: Request,
+        csrf_token_value: str | None = Form(None, alias="csrf_token"),
+    ):
+        if not valid_csrf(request, csrf_token_value):
+            return csrf_forbidden()
+        request.session.clear()
+        return RedirectResponse("/login", status_code=303)
+
     @app.get("/signup", response_class=HTMLResponse)
     def signup_form(request: Request):
         return TEMPLATES.TemplateResponse(
@@ -250,7 +260,9 @@ def create_app(
             return HTMLResponse("Not found", status_code=404)
         except Exception:
             logger.exception("feedback write failed (query_id=%r)", query_id)
-        return HTMLResponse('<span class="text-xs text-slate-500">Thanks for the feedback</span>')
+        return HTMLResponse(
+            '<span class="text-xs" style="color:var(--mute)">Thanks for the feedback</span>'
+        )
 
     @app.get("/documents/{doc_id:path}/file")
     def document_file(request: Request, doc_id: str):
