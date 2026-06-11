@@ -1,49 +1,83 @@
-<!doctype html><html><head><meta charset="utf-8"><title>Admin documents</title>
-<script src="https://cdn.tailwindcss.com"></script></head>
-<body class="bg-slate-50 min-h-screen">
-<main class="max-w-5xl mx-auto p-6 space-y-6">
-  <h1 class="text-2xl font-semibold">Documents</h1>
-  <form method="post" action="/upload" enctype="multipart/form-data" class="bg-white rounded shadow p-4 flex gap-3 items-end">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <label class="text-sm flex-1">PDF
-      <input name="file" type="file" class="block w-full border rounded px-3 py-2">
-    </label>
-    <button class="bg-slate-900 text-white rounded px-4 py-2">Upload</button>
-  </form>
-  <form method="post" action="/admin/documents/reindex">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <button class="border rounded px-4 py-2 bg-white">Re-index serving corpus</button>
-  </form>
-  <table class="w-full bg-white rounded shadow text-sm">
-    <thead>
-      <tr>
-        <th class="text-left p-2">Title</th>
-        <th class="text-left p-2">Type</th>
-        <th class="text-left p-2">Status</th>
-        <th class="text-left p-2">Chunks</th>
-        <th class="text-left p-2">Uploaded by</th>
-        <th class="p-2"></th>
-      </tr>
-    </thead>
-    <tbody>
-    {% for doc in documents %}
-      <tr class="border-t">
-        <td class="p-2">{{ doc.title }}</td>
-        <td class="p-2">{{ doc.source_type }}</td>
-        <td class="p-2">{{ doc.status }}</td>
-        <td class="p-2">{{ doc.n_chunks }}</td>
-        <td class="p-2">{{ doc.uploaded_by or "" }}</td>
-        <td class="p-2 text-right">
-          {% if doc.uploaded_by and doc.status != "deleted" %}
-          <form method="post" action="/admin/documents/delete">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <input type="hidden" name="doc_id" value="{{ doc.id }}">
-            <button class="border rounded px-3 py-1">Delete</button>
-          </form>
-          {% endif %}
-        </td>
-      </tr>
-    {% endfor %}
-    </tbody>
-  </table>
-</main></body></html>
+{% extends "base.html" %}
+
+{% block title %}GenAcademy Compass - Admin documents{% endblock %}
+
+{% block body %}
+<main class="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8">
+  <section class="mb-6 flex flex-col gap-4 border-b border-slate-200 pb-5 md:flex-row md:items-end md:justify-between">
+    <div>
+      <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">GenAcademy Compass</p>
+      <h1 class="mt-2 text-3xl font-semibold tracking-tight text-slate-950">Corpus documents</h1>
+      <p class="mt-2 max-w-2xl text-sm leading-6 text-slate-600">Upload PDFs, re-index the serving corpus, and retire uploaded documents.</p>
+    </div>
+    <nav class="flex flex-wrap gap-2 text-sm" aria-label="Admin navigation">
+      <a class="rounded-md border border-slate-300 bg-white px-3 py-2 text-slate-700 shadow-sm hover:border-slate-400" href="/">Ask</a>
+      <a class="rounded-md border border-slate-300 bg-slate-950 px-3 py-2 text-white shadow-sm" href="/admin/documents">Documents</a>
+      <a class="rounded-md border border-slate-300 bg-white px-3 py-2 text-slate-700 shadow-sm hover:border-slate-400" href="/admin/dashboard">Dashboard</a>
+      <a class="rounded-md border border-slate-300 bg-white px-3 py-2 text-slate-700 shadow-sm hover:border-slate-400" href="/admin/invites">Invites</a>
+    </nav>
+  </section>
+
+  <section class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto]">
+    <form method="post" action="/upload" enctype="multipart/form-data" class="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label class="block text-sm font-medium text-slate-700">PDF
+        <input name="file" type="file" class="mt-2 block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700">
+      </label>
+      <div class="mt-4 flex justify-end">
+        <button class="rounded-md bg-slate-950 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-slate-800">Upload</button>
+      </div>
+    </form>
+
+    <form method="post" action="/admin/documents/reindex" class="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <p class="mb-4 text-sm text-slate-600">Refresh the searchable serving corpus after uploads or deletes.</p>
+      <button class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 shadow-sm hover:border-slate-400">Re-index serving corpus</button>
+    </form>
+  </section>
+
+  <section class="mt-6 rounded-lg border border-slate-200 bg-white shadow-sm">
+    <div class="border-b border-slate-200 p-4">
+      <h2 class="font-semibold text-slate-950">Documents</h2>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="min-w-full text-sm">
+        <thead class="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+          <tr>
+            <th class="px-4 py-3 text-left font-medium">Title</th>
+            <th class="px-4 py-3 text-left font-medium">Type</th>
+            <th class="px-4 py-3 text-left font-medium">Status</th>
+            <th class="px-4 py-3 text-left font-medium">Chunks</th>
+            <th class="px-4 py-3 text-left font-medium">Uploaded by</th>
+            <th class="px-4 py-3 text-right font-medium">Action</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100">
+        {% for doc in documents %}
+          <tr>
+            <td class="max-w-sm break-words px-4 py-3 font-medium text-slate-900">{{ doc.title }}</td>
+            <td class="px-4 py-3 text-slate-700">{{ doc.source_type }}</td>
+            <td class="px-4 py-3 text-slate-700">{{ doc.status }}</td>
+            <td class="px-4 py-3 text-slate-700">{{ doc.n_chunks }}</td>
+            <td class="px-4 py-3 text-slate-700">{{ doc.uploaded_by or "" }}</td>
+            <td class="px-4 py-3 text-right">
+              {% if doc.uploaded_by and doc.status != "deleted" %}
+              <form method="post" action="/admin/documents/delete">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <input type="hidden" name="doc_id" value="{{ doc.id }}">
+                <button class="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-800 hover:border-slate-400">Delete</button>
+              </form>
+              {% endif %}
+            </td>
+          </tr>
+        {% else %}
+          <tr>
+            <td class="px-4 py-6 text-slate-500" colspan="6">No rows yet.</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</main>
+{% endblock %}

@@ -1,43 +1,114 @@
-<!doctype html><html><head><meta charset="utf-8"><title>Admin dashboard</title>
-<script src="https://cdn.tailwindcss.com"></script></head>
-<body class="bg-slate-50 min-h-screen">
-<main class="max-w-5xl mx-auto p-6 space-y-6">
-  <h1 class="text-2xl font-semibold">Dashboard</h1>
-  <section class="grid grid-cols-2 md:grid-cols-7 gap-3">
-    <div class="bg-white rounded shadow p-3"><p class="text-xs text-slate-500">Total queries</p><p class="text-2xl">{{ summary.total_queries }}</p></div>
-    <div class="bg-white rounded shadow p-3"><p class="text-xs text-slate-500">Refusal rate</p><p class="text-2xl">{{ "%.0f"|format(summary.refusal_rate * 100) }}%</p></div>
-    <div class="bg-white rounded shadow p-3"><p class="text-xs text-slate-500">Fallback rate</p><p class="text-2xl">{{ "%.0f"|format(summary.fallback_rate * 100) }}%</p></div>
-    <div class="bg-white rounded shadow p-3"><p class="text-xs text-slate-500">p50</p><p class="text-2xl">{{ summary.latency_p50_ms }} ms</p></div>
-    <div class="bg-white rounded shadow p-3"><p class="text-xs text-slate-500">p95</p><p class="text-2xl">{{ summary.latency_p95_ms }} ms</p></div>
-    <div class="bg-white rounded shadow p-3"><p class="text-xs text-slate-500">Thumbs up</p><p class="text-2xl">👍 {{ feedback.up }}</p></div>
-    <div class="bg-white rounded shadow p-3"><p class="text-xs text-slate-500">Thumbs down</p><p class="text-2xl">👎 {{ feedback.down }}</p></div>
+{% extends "base.html" %}
+
+{% block title %}GenAcademy Compass - Admin dashboard{% endblock %}
+
+{% block body %}
+<main class="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8">
+  <section class="mb-6 flex flex-col gap-4 border-b border-slate-200 pb-5 md:flex-row md:items-end md:justify-between">
+    <div>
+      <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">GenAcademy Compass</p>
+      <h1 class="mt-2 text-3xl font-semibold tracking-tight text-slate-950">Operations dashboard</h1>
+      <p class="mt-2 max-w-2xl text-sm leading-6 text-slate-600">Monitor usage, refusals, and feedback for the cohort assistant.</p>
+    </div>
+    <nav class="flex flex-wrap gap-2 text-sm" aria-label="Admin navigation">
+      <a class="rounded-md border border-slate-300 bg-white px-3 py-2 text-slate-700 shadow-sm hover:border-slate-400" href="/">Ask</a>
+      <a class="rounded-md border border-slate-300 bg-white px-3 py-2 text-slate-700 shadow-sm hover:border-slate-400" href="/admin/documents">Documents</a>
+      <a class="rounded-md border border-slate-300 bg-slate-950 px-3 py-2 text-white shadow-sm" href="/admin/dashboard">Dashboard</a>
+      <a class="rounded-md border border-slate-300 bg-white px-3 py-2 text-slate-700 shadow-sm hover:border-slate-400" href="/admin/invites">Invites</a>
+    </nav>
   </section>
-  <section class="bg-white rounded shadow p-4">
-    <h2 class="font-semibold mb-3">Queries by day</h2>
-    <svg width="100%" height="120" role="img">
-      {% for row in summary.queries_by_day %}
-      <rect x="{{ loop.index0 * 70 }}" y="{{ 110 - (row.count * 20) }}" width="48" height="{{ row.count * 20 }}" fill="#0f172a"></rect>
-      <text x="{{ loop.index0 * 70 }}" y="118" font-size="10">{{ row.day[5:] }}</text>
-      {% endfor %}
-    </svg>
+
+  <section class="grid gap-3 sm:grid-cols-2 lg:grid-cols-7">
+    <div class="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+      <p class="text-xs font-medium text-slate-500">Total queries</p>
+      <p class="mt-2 text-2xl font-semibold text-slate-950">{{ summary.total_queries }}</p>
+    </div>
+    <div class="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+      <p class="text-xs font-medium text-slate-500">Refusal rate</p>
+      <p class="mt-2 text-2xl font-semibold text-slate-950">{{ "%.0f"|format(summary.refusal_rate * 100) }}%</p>
+    </div>
+    <div class="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+      <p class="text-xs font-medium text-slate-500">Fallback rate</p>
+      <p class="mt-2 text-2xl font-semibold text-slate-950">{{ "%.0f"|format(summary.fallback_rate * 100) }}%</p>
+    </div>
+    <div class="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+      <p class="text-xs font-medium text-slate-500">p50</p>
+      <p class="mt-2 text-2xl font-semibold text-slate-950">{{ summary.latency_p50_ms }} ms</p>
+    </div>
+    <div class="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+      <p class="text-xs font-medium text-slate-500">p95</p>
+      <p class="mt-2 text-2xl font-semibold text-slate-950">{{ summary.latency_p95_ms }} ms</p>
+    </div>
+    <div class="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+      <p class="text-xs font-medium text-slate-500">Thumbs up</p>
+      <p class="mt-2 text-2xl font-semibold text-slate-950">👍 {{ feedback.up }}</p>
+    </div>
+    <div class="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+      <p class="text-xs font-medium text-slate-500">Thumbs down</p>
+      <p class="mt-2 text-2xl font-semibold text-slate-950">👎 {{ feedback.down }}</p>
+    </div>
   </section>
-  <section class="bg-white rounded shadow p-4">
-    <h2 class="font-semibold mb-3">Top questions</h2>
-    <ul class="space-y-1">
+
+  <section class="mt-6 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+    <div class="mb-3 flex items-center justify-between gap-3">
+      <h2 class="font-semibold text-slate-950">Queries by day</h2>
+    </div>
+    <div class="overflow-x-auto">
+      <svg width="100%" height="120" role="img" aria-label="Queries by day bar chart">
+        {% for row in summary.queries_by_day %}
+        <rect x="{{ loop.index0 * 70 }}" y="{{ 110 - (row.count * 20) }}" width="48" height="{{ row.count * 20 }}" fill="#0f172a"></rect>
+        <text x="{{ loop.index0 * 70 }}" y="118" font-size="10">{{ row.day[5:] }}</text>
+        {% endfor %}
+      </svg>
+    </div>
+  </section>
+
+  <section class="mt-6 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+    <h2 class="font-semibold text-slate-950">Top questions</h2>
+    <ul class="mt-3 divide-y divide-slate-100 text-sm">
       {% for row in summary.top_questions %}
-      <li class="flex justify-between border-b py-1"><span>{{ row.question }}</span><span>{{ row.count }}</span></li>
+      <li class="flex gap-4 py-2">
+        <span class="min-w-0 flex-1 break-words text-slate-700">{{ row.question }}</span>
+        <span class="font-medium text-slate-950">{{ row.count }}</span>
+      </li>
+      {% else %}
+      <li class="py-6 text-sm text-slate-500">No rows yet.</li>
       {% endfor %}
     </ul>
   </section>
-  <section class="bg-white rounded shadow p-4">
-    <h2 class="font-semibold mb-3">Recent usage</h2>
-    <table class="w-full text-sm">
-      <thead><tr><th class="text-left p-2">Time</th><th class="text-left p-2">User</th><th class="text-left p-2">Question</th><th class="text-left p-2">Refused</th><th class="text-left p-2">Latency</th></tr></thead>
-      <tbody>
-      {% for row in rows %}
-        <tr class="border-t"><td class="p-2">{{ row.ts }}</td><td class="p-2">{{ row.user_email }}</td><td class="p-2">{{ row.question }}</td><td class="p-2">{{ row.refused }}</td><td class="p-2">{{ row.latency_ms }} ms</td></tr>
-      {% endfor %}
-      </tbody>
-    </table>
+
+  <section class="mt-6 rounded-lg border border-slate-200 bg-white shadow-sm">
+    <div class="border-b border-slate-200 p-4">
+      <h2 class="font-semibold text-slate-950">Recent usage</h2>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="min-w-full text-sm">
+        <thead class="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+          <tr>
+            <th class="px-4 py-3 text-left font-medium">Time</th>
+            <th class="px-4 py-3 text-left font-medium">User</th>
+            <th class="px-4 py-3 text-left font-medium">Question</th>
+            <th class="px-4 py-3 text-left font-medium">Refused</th>
+            <th class="px-4 py-3 text-left font-medium">Latency</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100">
+        {% for row in rows %}
+          <tr>
+            <td class="px-4 py-3 text-slate-600">{{ row.ts }}</td>
+            <td class="px-4 py-3 text-slate-700">{{ row.user_email }}</td>
+            <td class="max-w-xl break-words px-4 py-3 text-slate-900">{{ row.question }}</td>
+            <td class="px-4 py-3 text-slate-700">{{ row.refused }}</td>
+            <td class="px-4 py-3 text-slate-700">{{ row.latency_ms }} ms</td>
+          </tr>
+        {% else %}
+          <tr>
+            <td class="px-4 py-6 text-slate-500" colspan="5">No rows yet.</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
   </section>
-</main></body></html>
+</main>
+{% endblock %}

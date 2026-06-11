@@ -171,6 +171,25 @@ def test_chat_page_has_compass_workbench_and_question_chips(monkeypatch, tmp_pat
     assert 'name="csrf_token"' in page.text
 
 
+def test_admin_pages_use_compass_admin_shell(monkeypatch, tmp_path):
+    c = _client(monkeypatch, tmp_path)
+    _login(c, "admin@genacademy.local", "admin")
+
+    for path, heading in [
+        ("/admin/dashboard", "Operations dashboard"),
+        ("/admin/documents", "Corpus documents"),
+        ("/admin/invites", "Invite management"),
+    ]:
+        page = c.get(path)
+        assert page.status_code == 200
+        assert "GenAcademy Compass" in page.text
+        assert heading in page.text
+        assert 'href="/"' in page.text
+        assert 'href="/admin/documents"' in page.text
+        assert 'href="/admin/dashboard"' in page.text
+        assert 'href="/admin/invites"' in page.text
+
+
 def test_login_then_ask_renders_cited_answer(monkeypatch, tmp_path):
     c = _client(monkeypatch, tmp_path)
     _login(c)
