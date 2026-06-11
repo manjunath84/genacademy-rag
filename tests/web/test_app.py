@@ -171,6 +171,28 @@ def test_chat_page_has_compass_workbench_and_question_chips(monkeypatch, tmp_pat
     assert 'name="csrf_token"' in page.text
 
 
+def test_chat_page_hides_admin_links_for_members(monkeypatch, tmp_path):
+    c = _client(monkeypatch, tmp_path)
+    _login(c)
+
+    page = c.get("/")
+
+    assert page.status_code == 200
+    assert 'href="/admin/documents"' not in page.text
+    assert 'href="/admin/dashboard"' not in page.text
+
+
+def test_chat_page_shows_admin_links_for_admins(monkeypatch, tmp_path):
+    c = _client(monkeypatch, tmp_path)
+    _login(c, "admin@genacademy.local", "admin")
+
+    page = c.get("/")
+
+    assert page.status_code == 200
+    assert 'href="/admin/documents"' in page.text
+    assert 'href="/admin/dashboard"' in page.text
+
+
 def test_admin_pages_use_compass_admin_shell(monkeypatch, tmp_path):
     c = _client(monkeypatch, tmp_path)
     _login(c, "admin@genacademy.local", "admin")
@@ -288,7 +310,8 @@ def test_answer_card_renders_badge_sources_disclaimer(monkeypatch, tmp_path):
     assert 'href="https://github.com/The-Gen-Academy/r/blob/abc123/README.md#L1-L2"' in page
     assert "RAG retrieves then generates." in page
     assert "it can make mistakes" in page
-    assert "copy" in page and "retry" in page
+    assert 'aria-label="Copy answer"' in page
+    assert "retry" in page
 
 
 def test_refused_card_has_refusal_badge_no_copy_no_sources(monkeypatch, tmp_path):
@@ -298,7 +321,7 @@ def test_refused_card_has_refusal_badge_no_copy_no_sources(monkeypatch, tmp_path
     _, page = _ask_and_get_query_id(c, token)
     assert "Not in the materials" in page
     assert "Sources" not in page
-    assert "⧉ copy" not in page
+    assert 'aria-label="Copy answer"' not in page
     assert "it can make mistakes" in page
 
 
@@ -415,6 +438,7 @@ def test_signup_redeems_invite_and_logs_in(monkeypatch, tmp_path):
     assert created.status_code == 303
     home = c.get("/")
     assert "GenAcademy Compass" in home.text
+    assert 'name="question"' in home.text
 
 
 def test_create_app_uses_secure_cookie_setting(monkeypatch, tmp_path):

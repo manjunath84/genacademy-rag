@@ -8,10 +8,12 @@
       <h1 class="text-3xl font-semibold tracking-tight">GenAcademy Compass</h1>
       <p class="max-w-2xl text-sm text-slate-600">Evidence-first answers from the cohort materials.</p>
     </div>
+    {% if role == "admin" %}
     <div class="flex flex-wrap gap-2 text-sm">
       <a class="rounded-md border border-slate-300 bg-white px-3 py-2 text-slate-700 shadow-sm" href="/admin/documents">Documents</a>
       <a class="rounded-md border border-slate-300 bg-white px-3 py-2 text-slate-700 shadow-sm" href="/admin/dashboard">Dashboard</a>
     </div>
+    {% endif %}
   </section>
 
   <section class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_18rem]">
