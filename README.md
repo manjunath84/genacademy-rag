@@ -12,6 +12,10 @@ citations, and refuses when the materials do not support an answer.
 The user-facing app title is **GenAcademy Compass**. The repository, package, and technical docs keep
 the GenAcademy RAG name.
 
+## Visual Overview
+
+![GenAcademy Compass operating model](docs/diagrams/05-genacademy-compass-operating-model.svg)
+
 ## Current Status
 
 - Hybrid retrieval with cited answers and refusal-first behavior.
