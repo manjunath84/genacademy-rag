@@ -57,6 +57,22 @@ def test_pdf_page_label_follows_chunk_start_across_a_boundary():
     assert chunks[1].citation.page_or_section == "page 2"
 
 
+def test_section_chunker_preserves_pdf_page_labels():
+    doc = Document(
+        doc_id="g",
+        title="g.pdf",
+        source_type="pdf",
+        text="AAAA\fBBBB",
+        filename="g.pdf",
+    )
+
+    chunks = SectionAwareChunker(max_chars=6, overlap=0).chunk(doc)
+
+    assert chunks[0].text == "AAAA\fB"
+    assert chunks[0].citation.page_or_section == "page 1"
+    assert chunks[1].citation.page_or_section == "page 2"
+
+
 def test_build_chunker_returns_fixed_by_default():
     # Distinct values per param so a fixed/section param swap fails loudly.
     chunker = build_chunker(

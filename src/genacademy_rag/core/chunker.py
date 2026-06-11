@@ -64,6 +64,12 @@ def _section_label(path: tuple[str, ...]) -> str | None:
     return "section: " + " > ".join(path)
 
 
+def _page_label(text: str, start: int) -> str | None:
+    if "\f" not in text:
+        return None
+    return f"page {text.count(chr(12), 0, start) + 1}"
+
+
 class FixedSizeChunker:
     def __init__(self, chunk_size: int = 1000, overlap: int = 150):
         if overlap >= chunk_size:
@@ -79,7 +85,6 @@ class FixedSizeChunker:
         # Precompute char-offset -> line number (1-based) for span citations.
         line_at = _line_lookup(text)
 
-        has_pages = "\f" in text
         step = self.chunk_size - self.overlap
         chunks: list[Chunk] = []
         ordinal = 0
@@ -87,15 +92,12 @@ class FixedSizeChunker:
         while start < n:
             end = min(start + self.chunk_size, n)
             piece = text[start:end]
-            page_or_section = (
-                f"page {text.count(chr(12), 0, start) + 1}" if has_pages else None
-            )
             citation = _citation_for_span(
                 doc,
                 start=start,
                 end=end,
                 line_at=line_at,
-                page_or_section=page_or_section,
+                page_or_section=_page_label(text, start),
             )
             chunks.append(Chunk(chunk_id=f"{doc.doc_id}::{ordinal}", doc_id=doc.doc_id,
                                 ordinal=ordinal, text=piece, citation=citation))
@@ -126,12 +128,13 @@ class SectionAwareChunker:
 
         def emit(start: int, end: int, path: tuple[str, ...]) -> None:
             ordinal = len(chunks)
+            page_or_section = _page_label(text, start) or _section_label(path)
             citation = _citation_for_span(
                 doc,
                 start=start,
                 end=end,
                 line_at=line_at,
-                page_or_section=_section_label(path),
+                page_or_section=page_or_section,
             )
             chunks.append(
                 Chunk(
