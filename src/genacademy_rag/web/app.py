@@ -93,7 +93,10 @@ def create_app(
         return token
 
     def csrf_context(request: Request, extra: dict | None = None) -> dict:
-        context = {"csrf_token": csrf_token(request)}
+        context = {
+            "csrf_token": csrf_token(request),
+            "role": request.session.get("role"),
+        }
         if extra:
             context.update(extra)
         return context

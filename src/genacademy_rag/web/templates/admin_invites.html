@@ -1,49 +1,82 @@
-<!doctype html><html><head><meta charset="utf-8"><title>Admin invites</title>
-<script src="https://cdn.tailwindcss.com"></script></head>
-<body class="bg-slate-50 min-h-screen">
-<main class="max-w-4xl mx-auto p-6 space-y-6">
-  <h1 class="text-2xl font-semibold">Invites</h1>
-  {% if new_code %}<p class="bg-emerald-50 border border-emerald-200 rounded p-3">Invite code: {{ new_code }}</p>{% endif %}
-  <form method="post" action="/admin/invites" class="flex gap-2 items-end">
+{% extends "base.html" %}
+
+{% block title %}GenAcademy Compass - Admin invites{% endblock %}
+
+{% block body %}
+<main class="mx-auto max-w-5xl px-4 py-6 sm:px-6 lg:px-8">
+  <section class="mb-6 flex flex-col gap-4 border-b border-slate-200 pb-5 md:flex-row md:items-end md:justify-between">
+    <div>
+      <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">GenAcademy Compass</p>
+      <h1 class="mt-2 text-3xl font-semibold tracking-tight text-slate-950">Invite management</h1>
+      <p class="mt-2 max-w-2xl text-sm leading-6 text-slate-600">Generate short-lived invite codes and revoke active invites when needed.</p>
+    </div>
+    <nav class="flex flex-wrap gap-2 text-sm" aria-label="Admin navigation">
+      <a class="rounded-md border border-slate-300 bg-white px-3 py-2 text-slate-700 shadow-sm hover:border-slate-400" href="/">Ask</a>
+      <a class="rounded-md border border-slate-300 bg-white px-3 py-2 text-slate-700 shadow-sm hover:border-slate-400" href="/admin/documents">Documents</a>
+      <a class="rounded-md border border-slate-300 bg-white px-3 py-2 text-slate-700 shadow-sm hover:border-slate-400" href="/admin/dashboard">Dashboard</a>
+      <a class="rounded-md border border-slate-300 bg-slate-950 px-3 py-2 text-white shadow-sm" href="/admin/invites">Invites</a>
+    </nav>
+  </section>
+
+  {% if new_code %}
+  <p class="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm font-medium text-emerald-900">Invite code: {{ new_code }}</p>
+  {% endif %}
+
+  <form method="post" action="/admin/invites" class="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <label class="text-sm">Role
-      <select name="role" class="block border rounded px-3 py-2">
-        <option value="member">member</option>
-        <option value="admin">admin</option>
-      </select>
-    </label>
-    <label class="text-sm">Expires in days
-      <input name="expires_days" value="7" class="block border rounded px-3 py-2 w-32">
-    </label>
-    <button class="bg-slate-900 text-white rounded px-4 py-2">Generate</button>
+    <div class="grid gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end">
+      <label class="text-sm font-medium text-slate-700">Role
+        <select name="role" class="mt-2 block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700">
+          <option value="member">member</option>
+          <option value="admin">admin</option>
+        </select>
+      </label>
+      <label class="text-sm font-medium text-slate-700">Expires in days
+        <input name="expires_days" value="7" class="mt-2 block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700">
+      </label>
+      <button class="rounded-md bg-slate-950 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-slate-800">Generate</button>
+    </div>
   </form>
-  <table class="w-full bg-white rounded shadow text-sm">
-    <thead>
-      <tr>
-        <th class="text-left p-2">ID</th>
-        <th class="text-left p-2">Role</th>
-        <th class="text-left p-2">Status</th>
-        <th class="text-left p-2">Used by</th>
-        <th class="p-2"></th>
-      </tr>
-    </thead>
-    <tbody>
-    {% for invite in invites %}
-      <tr class="border-t">
-        <td class="p-2">{{ invite.id }}</td>
-        <td class="p-2">{{ invite.role }}</td>
-        <td class="p-2">{{ invite.status }}</td>
-        <td class="p-2">{{ invite.used_by or "" }}</td>
-        <td class="p-2 text-right">
-          {% if invite.status == "active" %}
-          <form method="post" action="/admin/invites/{{ invite.id }}/revoke">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <button class="border rounded px-3 py-1">Revoke</button>
-          </form>
-          {% endif %}
-        </td>
-      </tr>
-    {% endfor %}
-    </tbody>
-  </table>
-</main></body></html>
+
+  <section class="mt-6 rounded-lg border border-slate-200 bg-white shadow-sm">
+    <div class="border-b border-slate-200 p-4">
+      <h2 class="font-semibold text-slate-950">Invites</h2>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="min-w-full text-sm">
+        <thead class="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+          <tr>
+            <th class="px-4 py-3 text-left font-medium">ID</th>
+            <th class="px-4 py-3 text-left font-medium">Role</th>
+            <th class="px-4 py-3 text-left font-medium">Status</th>
+            <th class="px-4 py-3 text-left font-medium">Used by</th>
+            <th class="px-4 py-3 text-right font-medium">Action</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100">
+        {% for invite in invites %}
+          <tr>
+            <td class="break-words px-4 py-3 font-medium text-slate-900">{{ invite.id }}</td>
+            <td class="px-4 py-3 text-slate-700">{{ invite.role }}</td>
+            <td class="px-4 py-3 text-slate-700">{{ invite.status }}</td>
+            <td class="px-4 py-3 text-slate-700">{{ invite.used_by or "" }}</td>
+            <td class="px-4 py-3 text-right">
+              {% if invite.status == "active" %}
+              <form method="post" action="/admin/invites/{{ invite.id }}/revoke">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button class="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-800 hover:border-slate-400">Revoke</button>
+              </form>
+              {% endif %}
+            </td>
+          </tr>
+        {% else %}
+          <tr>
+            <td class="px-4 py-6 text-slate-500" colspan="5">No rows yet.</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</main>
+{% endblock %}

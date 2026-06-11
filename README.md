@@ -9,9 +9,13 @@ app_port: 7860
 Knowledge assistant for Gen Academy cohort materials. It retrieves from course content, answers with
 citations, and refuses when the materials do not support an answer.
 
+The user-facing app title is **GenAcademy Compass**. The repository, package, and technical docs keep
+the GenAcademy RAG name.
+
 ## Current Status
 
 - Hybrid retrieval with cited answers and refusal-first behavior.
+- GenAcademy Compass UI shell for chat, auth, and admin workflows.
 - Admin upload, invite, usage-log, and feedback flows.
 - Answer trust UX: confidence badges, source links/snippets, copy/retry, disclaimer, and thumbs
   feedback.

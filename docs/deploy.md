@@ -283,7 +283,7 @@ https://Manjunath84-genacademy-rag.hf.space
    password: member
    ```
 
-3. Expected: the chat screen loads with the heading **Ask the cohort materials**.
+3. Expected: the chat screen loads with the heading **GenAcademy Compass**.
 
 There is no logout button in this slice. To switch users, use an incognito/private browser window,
 another browser profile, or clear the Space's cookies.
