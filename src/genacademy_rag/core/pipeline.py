@@ -3,9 +3,10 @@ QueryPipeline (online): question → graph → {answer, citations}. Both pure.""
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from genacademy_rag.core.graph import build_graph
+from genacademy_rag.core.sources import SourceView, merge_citations
 from genacademy_rag.core.types import Chunk, Citation, Document
 
 logger = logging.getLogger(__name__)
@@ -83,6 +84,9 @@ class QueryResult:
     refused: bool
     confidence: int
     used_fallback: bool = False
+    # Merged presentation rows for the answer card. Empty on refusals (the refused card
+    # shows no source list). `citations` stays raw/per-chunk: the eval contract.
+    sources: list[SourceView] = field(default_factory=list)
 
 
 class QueryPipeline:
@@ -102,4 +106,5 @@ class QueryPipeline:
             refused=out["refused"],
             confidence=out["confidence"],
             used_fallback=out["used_fallback"],
+            sources=[] if out["refused"] else merge_citations(out["retrieved"]),
         )

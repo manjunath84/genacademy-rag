@@ -40,6 +40,21 @@ demo-only extras, and the architecture should stay extensible without becoming a
 - The architecture visibly supports **swapping** data sources, model providers, and retrieval
   strategies (interface + config, demonstrated by a second implementation).
 
+## Answer trust principles (the answer surface, not just the pipeline)
+
+The pipeline's citation discipline must be *visible* at the answer card, or members can't act on it:
+
+1. **Every citation is verifiable in one click** — GitHub sources link to the pinned commit at the
+   cited line range; uploaded files name their page/section.
+2. **Confidence is shown honestly** — a Low/Medium/High bucket derived from the grader's 1–5
+   answerability signal, never dressed up as a calibrated probability or percentage.
+3. **User feedback is captured** — thumbs up/down persists per query and surfaces to admins; it is
+   future eval-mining input, not decoration.
+4. **An AI-mistake disclaimer is always visible** on generated answers, pointing the reader at the
+   sources.
+
+(Slice spec: `../docs/superpowers/specs/2026-06-10-answer-trust-feedback-ux-design.md`.)
+
 ## Corpus model (the curated material *grows* — it is not a fixed file set)
 
 The cohort's materials keep changing (new repos, admin uploads, future sources), so the corpus is **two-tier**:

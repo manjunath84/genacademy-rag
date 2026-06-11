@@ -88,6 +88,24 @@ droppable.
 
 ---
 
+## Answer trust & feedback UX  *(pre-submission slice — in progress)*
+
+Upgrade the answer card to make the pipeline's citation discipline visible and capture user feedback.
+Spec: `../docs/superpowers/specs/2026-06-10-answer-trust-feedback-ux-design.md`.
+
+- **Clickable pinned-commit source links + merged line ranges + chunk snippets** (`core/sources.py`,
+  pure helpers). Uploaded PDF/DOCX/PPTX sources link too, via an authenticated
+  `GET /documents/{doc_id}/file` route serving the stored upload (covers future admin uploads
+  automatically).
+- **Overview-format answers** (overview paragraph + key points; grounding rules unchanged;
+  `max_tokens` 512→800) — **faithfulness eval must be re-run** after the prompt change.
+- **Low/Med/High confidence badge** from the existing 1–5 grader bucket; refusal gets its own badge.
+- **Thumbs up/down** → new `feedback` table + `/feedback` endpoint (CSRF, best-effort) + admin
+  dashboard counts. Copy button (Alpine.js), plain retry, AI-mistake disclaimer.
+- **Deterministic retrieval eval untouched** — no retrieval/chunking/grader change in this slice.
+
+---
+
 ## Nebius — mandatory call ✅ SATISFIED
 
 The graded eval ran on the **Nebius preset** (`GENACADEMY_PROVIDER=nebius`,

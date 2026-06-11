@@ -15,11 +15,12 @@ The repository is:
 ## What The App Demonstrates
 
 - Hybrid retrieval with dense embeddings plus BM25, fused with reciprocal rank fusion.
-- Line-level citations for retrieved course materials.
+- Clickable source cards with merged line ranges, snippets, and line-level citations.
 - A refusal path for unsupported questions.
+- Answer trust controls: confidence badge, copy/retry actions, persisted thumbs feedback, and an AI-mistake disclaimer.
 - Nebius generation through an OpenAI-compatible provider seam.
-- A deterministic retrieval eval with recall@k, precision@k, MRR, and failure analysis.
-- A small product layer: login, invite-code signup, admin document management, and usage analytics.
+- A deterministic retrieval eval with recall@k, precision@k, and MRR, plus LLM-judge faithfulness and failure analysis.
+- A small product layer: login, invite-code signup, admin document management, usage analytics, and admin feedback counts.
 - Docker deployment to Hugging Face Spaces with a live HTTP smoke test.
 
 ## Dataset And Corpus
@@ -167,11 +168,15 @@ All prompts in this section are **reconstructed** — they are faithful paraphra
 5. **Live validation**
    Deployed to Hugging Face Spaces, passed the live smoke check, verified a cited answer, and verified refusal on an unsupported question.
 
+6. **Answer trust UX**
+   Added merged clickable source rows, snippets, confidence display, copy/retry controls, persisted thumbs feedback, and admin feedback counts. The answer prompt changed to an overview paragraph plus key-point bullets, then the Nebius eval was rerun: retrieval stayed `recall@k=0.67 / precision@k=0.22 / MRR=0.55`, and faithfulness stayed `58%` for a `0` percentage-point delta.
+
 ## Learnings
 
 - RAG quality depends more on corpus boundaries, chunking, retrieval, and citations than on the model alone.
 - Refusal behavior needs to be designed and tested as a first-class path, not treated as a fallback message.
 - Deterministic evals are valuable because they make retrieval changes measurable instead of anecdotal.
+- Presentation changes still need measurement: the answer-card prompt improved answer shape without moving retrieval metrics or faithfulness in the Nebius rerun.
 - Deployment surfaces different risks than local tests: persistent storage, environment variables, startup bootstrap, and provider credentials all need explicit runbooks.
 - Independent review was especially helpful for finding brittle assumptions around Docker, Hugging Face Spaces, and partial bootstrap state.
 
@@ -192,7 +197,7 @@ This project intentionally diverges from the handout sample solution:
 - Hugging Face `/data` is ephemeral unless paid persistent storage is attached, so users/uploads/usage reset on restart.
 - The first deployment uses Chroma, not Pinecone, to keep the live demo simple.
 - Rerank is disabled in the Space because the rerank model is not baked into the Docker image.
-- The live HTTP smoke proves boot and login-page rendering; browser testing is still needed for actual query behavior.
+- The live HTTP smoke proves boot and login-page rendering; browser testing is still needed after each deploy for actual query and answer-card behavior.
 
 ## Final Submission Notes
 
@@ -203,4 +208,4 @@ Use these links in the cohort form:
 
 Suggested short description:
 
-> GenAcademy RAG is a course-material assistant that answers with line-level citations and refuses unsupported questions. It uses hybrid retrieval, a pinned eval corpus, Nebius generation, admin document management, and a Docker Hugging Face Space deployment. The project is scale-ready by seams and evaluation discipline, not overbuilt with premature distributed infrastructure.
+> GenAcademy RAG is a course-material assistant that answers with clickable, line-level citations and refuses unsupported questions. It uses hybrid retrieval, a pinned eval corpus, Nebius generation, answer-confidence/feedback UX, admin document management, and a Docker Hugging Face Space deployment. The project is scale-ready by seams and evaluation discipline, not overbuilt with premature distributed infrastructure.

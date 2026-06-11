@@ -14,7 +14,10 @@ logger = logging.getLogger(__name__)
 REFUSAL_MESSAGE = "I could not find this in the course materials."
 ANSWER_SYSTEM = (
     "You answer ONLY from the provided course context. If the context does not contain the "
-    "answer, say you could not find it. Never use outside knowledge. Be concise."
+    "answer, say you could not find it. Never use outside knowledge. "
+    "Format your answer as a short overview paragraph (2-3 sentences) that directly answers "
+    "the question, followed by 2-4 key-point bullet lines starting with '- ' when the context "
+    "supports them. Do not pad with information that is not in the context."
 )
 
 
@@ -37,7 +40,7 @@ def build_graph(*, retriever, provider, cosine_threshold: float = 0.2):
         answer = provider.generate(
             [{"role": "system", "content": ANSWER_SYSTEM},
              {"role": "user", "content": f"Context:\n{context}\n\nQuestion: {state['question']}"}],
-            json_mode=False, max_tokens=512,
+            json_mode=False, max_tokens=800,
         )
         citations = [r.chunk.citation for r in state["retrieved"]]
         return {"answer": answer, "citations": citations, "refused": False}
