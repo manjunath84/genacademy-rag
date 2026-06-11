@@ -195,7 +195,7 @@ Cost should be measured before adding cost infrastructure.
 
 ### 4. Deployment Readiness
 
-The Docker/Hugging Face Space deploy slice shipped in PR #9 (2026-06-10):
+The Docker/Hugging Face Space deploy slice shipped in PR #10 (2026-06-10):
 
 - Docker packaging
 - Hugging Face Space metadata
@@ -292,12 +292,9 @@ Consider:
 
 This should stay future-facing for now.
 
-Note: this growth path deliberately re-times one roadmap item — `specs/roadmap.md` Phase 2 lists a
-"Postgres preset" and `docs/design.md` says "SQLite (Phase 0) → Postgres (deploy)", while this
-posture defers Postgres until persistence or multi-instance needs justify it. Phase 2 items are
-each independently droppable, so this is allowed; if reviewers adopt this posture, reconcile the
-roadmap line (mark the Postgres preset deferred-by-posture) so the two documents do not silently
-disagree.
+Note: this growth path deliberately re-times one original roadmap item. The project now treats
+Postgres as a future scale/persistence option, not as a required part of the Hugging Face deploy.
+Phase 2 items remain independently droppable, and the datastore seam preserves the migration path.
 
 ## Agentic RAG Decision
 
@@ -327,17 +324,18 @@ simpler retrieval, chunking, or prompting changes.
 
 ## Recommended Next Work
 
-1. ~~Finish the Docker/Hugging Face Space deploy slice.~~ Shipped (PR #9, 2026-06-10). Remaining
-   handout deliverables: demo video (≤5 min), project write-up doc, cohort form submission
+1. ~~Finish the Docker/Hugging Face Space deploy slice.~~ Shipped (PR #10, 2026-06-10).
+2. ~~Finish the answer trust and feedback UX slice.~~ Shipped (PR #11, 2026-06-10).
+3. Remaining handout deliverables: demo video (≤5 min), project write-up doc, cohort form submission
    (`specs/roadmap.md` cross-phase deliverables).
-2. Add the system-design addendum to project docs if reviewers agree.
-3. Use the new `data/` files only as a production/demo corpus, not eval data.
-4. Preserve current defaults:
+4. Add the system-design addendum to `AGENTS.md` only if reviewers agree.
+5. Use the new `data/` files only as a production/demo corpus, not eval data.
+6. Preserve current defaults:
    - fixed chunking
    - rerank disabled unless explicitly enabled
    - local deterministic eval
    - refusal-first answer behavior
-5. Final submission should explicitly say:
+7. Final submission should explicitly say:
    "This is scale-ready by seams and evaluation discipline, not overbuilt with premature distributed
    infrastructure."
 
@@ -349,5 +347,5 @@ Reviewers should focus on:
 - Are any proposed system-design additions still too much for the timebox?
 - Should the constitution addendum be added to `AGENTS.md`, `specs/roadmap.md`, or a separate docs
   file?
-- Is the deploy slice the right next implementation step, or should final project packaging come
-  first?
+- Should the Postgres deferral be promoted into `AGENTS.md` as a constitution rule, or remain a
+  documentation-level posture?

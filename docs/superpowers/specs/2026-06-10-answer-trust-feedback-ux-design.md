@@ -1,13 +1,13 @@
 # Answer Trust & Feedback UX — Design
 
-**Date:** 2026-06-10 · **Status:** approved in brainstorming, pre-implementation
+**Date:** 2026-06-10 · **Status:** shipped in PR #11
 **Scope:** one pre-submission slice. Brainstormed with visual mockups (`.superpowers/brainstorm/`);
 the approved card layout is `answer-card-v2.html` in that session.
 
 ## 1. Problem
 
-The current answer card (`web/templates/chat.html`) undermines trust in an otherwise
-citation-disciplined pipeline:
+Before this slice shipped, the answer card (`web/templates/chat.html`) undermined trust in an
+otherwise citation-disciplined pipeline:
 
 - Source rows are not clickable — the reader cannot verify a citation without manually
   navigating GitHub.
@@ -149,9 +149,9 @@ CREATE TABLE IF NOT EXISTS feedback (
 
 - **Deterministic retrieval eval (recall/precision/MRR): untouched.** No retrieval,
   chunking, or grader change in this slice.
-- **Faithfulness eval: must be re-run** after the `ANSWER_SYSTEM` change — answer
-  format directly affects the LLM-judge score (currently 58%). Report regenerated with
-  before/after noted in `eval/REPORT.md`.
+- **Faithfulness eval re-run** after the `ANSWER_SYSTEM` change — answer format directly affects the
+  LLM-judge score. Report regenerated with before/after noted in `eval/REPORT.md`; faithfulness
+  stayed at 58%.
 - New unit tests (offline, FakeModelProvider unchanged):
   - `merge_citations`: overlap merge, adjacency merge, non-contiguous separation,
     multi-file, uploaded-file grouping, snippet truncation.
@@ -167,15 +167,15 @@ CREATE TABLE IF NOT EXISTS feedback (
     datastore lookup.
 - Standard gates: `ruff` + `pytest` green; builder ≠ reviewer review before merge.
 
-## 6. Constitution updates
+## 6. Constitution/doc updates
 
-- **`specs/mission.md`** — add four product principles under answer UX:
+- **`specs/mission.md`** — added four product principles under answer UX:
   1. Every citation is verifiable in one click (pinned-commit links).
   2. Confidence is shown honestly as a bucket, never as a probability.
   3. User feedback is captured and visible to admins (future eval-mining input).
   4. An AI-mistake disclaimer is always visible on generated answers.
-- **`specs/roadmap.md`** — add this slice as **"Answer trust & feedback UX"**
-  (pre-submission, in progress).
+- **`specs/roadmap.md`** — added this slice as **"Answer trust & feedback UX"**
+  (pre-submission, shipped).
 - **`specs/tech-stack.md`** — unchanged; everything here uses the locked stack
   (Alpine.js was already in it).
 

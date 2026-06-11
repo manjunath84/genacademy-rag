@@ -31,3 +31,4 @@ eval/runs/
 .vscode/
 *.swp
 .superpowers/
+.kimchi/

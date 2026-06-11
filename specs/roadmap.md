@@ -81,14 +81,16 @@ member logs in and chats.
 - **Pinecone** preset — second `VectorStore` impl; live "Chroma → Pinecone, one config line".
 - **Cross-encoder rerank** + **section-aware chunking** — each produces a before/after eval delta.
 - **Nebius embeddings** preset — the "swap embedding provider" demo.
-- **Deploy:** Docker → Hugging Face Space; Postgres preset; auth hardening; smoke-check live URL.
+- **Deploy:** Docker → Hugging Face Space; auth hardening; smoke-check live URL. The original
+  Postgres preset is deferred by `docs/minimal-system-design.md` until persistence or multi-instance
+  needs justify it.
 
 **Risk cap:** ship none of Phase 2 rather than ship Phase 0/1 unfinished. Each item independently
 droppable.
 
 ---
 
-## Answer trust & feedback UX  *(pre-submission slice — in progress)*
+## Answer trust & feedback UX  *(pre-submission slice — shipped)*
 
 Upgrade the answer card to make the pipeline's citation discipline visible and capture user feedback.
 Spec: `../docs/superpowers/specs/2026-06-10-answer-trust-feedback-ux-design.md`.
@@ -98,7 +100,7 @@ Spec: `../docs/superpowers/specs/2026-06-10-answer-trust-feedback-ux-design.md`.
   `GET /documents/{doc_id}/file` route serving the stored upload (covers future admin uploads
   automatically).
 - **Overview-format answers** (overview paragraph + key points; grounding rules unchanged;
-  `max_tokens` 512→800) — **faithfulness eval must be re-run** after the prompt change.
+  `max_tokens` 512→800) — faithfulness eval re-run after the prompt change.
 - **Low/Med/High confidence badge** from the existing 1–5 grader bucket; refusal gets its own badge.
 - **Thumbs up/down** → new `feedback` table + `/feedback` endpoint (CSRF, best-effort) + admin
   dashboard counts. Copy button (Alpine.js), plain retry, AI-mistake disclaimer.
