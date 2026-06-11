@@ -1405,3 +1405,87 @@ def test_phase1_demo_flow(monkeypatch, tmp_path):
     _login(c, "admin@genacademy.local", "admin")
     dashboard = c.get("/admin/dashboard")
     assert "what is RAG?" in dashboard.text
+
+
+# --- logout lifecycle + Compass UI behavioral contracts -----------------------
+
+
+def test_logout_clears_session_and_blocks_access(monkeypatch, tmp_path):
+    c = _client(monkeypatch, tmp_path)
+    _login(c)
+    token = _csrf(c.get("/").text)
+
+    r = c.post("/logout", data={"csrf_token": token}, follow_redirects=False)
+
+    assert r.status_code == 303
+    assert r.headers["location"] == "/login"
+    home = c.get("/", follow_redirects=False)
+    assert home.status_code in (302, 307) and "/login" in home.headers["location"]
+    # session.clear() also wipes the csrf token, so the stale token must not re-authorize
+    ask = c.post(
+        "/ask", data={"question": "q?", "csrf_token": token}, follow_redirects=False
+    )
+    assert ask.status_code == 303 and ask.headers["location"] == "/login"
+
+
+@pytest.mark.parametrize("csrf_token", [None, "not-the-session-token"])
+def test_logout_rejects_missing_or_invalid_csrf(monkeypatch, tmp_path, csrf_token):
+    c = _client(monkeypatch, tmp_path)
+    _login(c)
+    c.get("/")  # mint the session csrf token
+    data = {} if csrf_token is None else {"csrf_token": csrf_token}
+
+    r = c.post("/logout", data=data, follow_redirects=False)
+
+    assert r.status_code == 403
+    assert c.get("/", follow_redirects=False).status_code == 200  # still signed in
+
+
+def test_logout_revokes_admin_access(monkeypatch, tmp_path):
+    c = _client(monkeypatch, tmp_path)
+    _login(c, "admin@genacademy.local", "admin")
+    token = _csrf(c.get("/").text)
+
+    c.post("/logout", data={"csrf_token": token}, follow_redirects=False)
+
+    assert c.get("/admin/dashboard", follow_redirects=False).status_code == 403
+
+
+def test_refusal_card_offers_suggested_questions_as_recovery(monkeypatch, tmp_path):
+    c = _client(monkeypatch, tmp_path, refused=True)
+    _login(c)
+    token = _csrf(c.get("/").text)
+
+    _, page = _ask_and_get_query_id(c, token)
+
+    assert "what the materials can answer" in page
+    assert "What is retrieval augmented generation?" in page
+
+
+def test_answer_card_echoes_question_escaped(monkeypatch, tmp_path):
+    c = _client(monkeypatch, tmp_path)
+    _login(c)
+    token = _csrf(c.get("/").text)
+
+    r = c.post(
+        "/ask",
+        data={"question": "<script>alert(1)</script> what is RAG?", "csrf_token": token},
+    )
+
+    assert "You asked" in r.text
+    assert "&lt;script&gt;" in r.text
+    assert "<script>alert(1)</script>" not in r.text
+
+
+@pytest.mark.parametrize(
+    "email,password",
+    [("member@genacademy.local", "member"), ("admin@genacademy.local", "admin")],
+)
+def test_chat_header_has_signout_form(monkeypatch, tmp_path, email, password):
+    c = _client(monkeypatch, tmp_path)
+    _login(c, email, password)
+
+    page = c.get("/").text
+
+    assert 'action="/logout"' in page
+    assert re.search(r'action="/logout".*?name="csrf_token"', page, re.S)

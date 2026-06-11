@@ -265,6 +265,31 @@ uv run python scripts/smoke_http.py --base-url https://Manjunath84-genacademy-ra
 The HTTP smoke checks `/login` only. It proves the container booted, templates render, and the CSRF
 render path works. It does not prove a cookie round-trip and does not spend generation tokens.
 
+## Live Acceptance-Test Order
+
+Use this order after pushing `main` to the Space. It catches cheap failures before spending
+generation tokens or creating uploaded test data.
+
+1. **Space config:** confirm secrets and variables are set, especially `GENACADEMY_SESSION_SECRET`,
+   `NEBIUS_API_KEY`, `PINECONE_API_KEY`, `GENACADEMY_SECURE_COOKIES=true`,
+   `GENACADEMY_VECTORSTORE=pinecone`, `GENACADEMY_EMBEDDINGS=local`, and
+   `GENACADEMY_RERANK_ENABLED=false`.
+2. **Logs:** wait for the Space to become **Running**. Check for bootstrap success, uvicorn startup,
+   and no Pinecone auth/dimension errors.
+3. **HTTP smoke:** run `scripts/smoke_http.py` against the Space URL. This proves boot, templates,
+   and CSRF rendering.
+4. **Member browser smoke:** log in as `member@genacademy.local` / `member`; verify the
+   **GenAcademy Compass** chat page loads and member users do not see admin links.
+5. **Cited-answer smoke:** ask the chunking-strategies question below; verify answer, citations,
+   source snippets, confidence, and disclaimer.
+6. **Refusal smoke:** ask the certification-cost question below; verify the hard refusal message.
+7. **Admin smoke:** log in as `admin@genacademy.local` / `admin`; verify invites, documents, and
+   dashboard pages.
+8. **Upload lifecycle smoke:** upload a one-page PDF with a unique keyword, ask for it as a member,
+   then delete and re-index; the keyword should stop being cited.
+9. **Dashboard smoke:** refresh `/admin/dashboard`; verify the recent live-test questions and usage
+   cards render.
+
 ## Live End-To-End Test Checklist
 
 Run these checks after the Space is **Running** and the HTTP smoke passes. Use the live URL:
@@ -285,8 +310,9 @@ https://Manjunath84-genacademy-rag.hf.space
 
 3. Expected: the chat screen loads with the heading **GenAcademy Compass**.
 
-There is no logout button in this slice. To switch users, use an incognito/private browser window,
-another browser profile, or clear the Space's cookies.
+Use the **sign out** control in the top-right header to end a session and return to the login
+screen. To hold two sessions at once (member + admin), use an incognito/private browser window or a
+separate browser profile.
 
 ### 2. Cited Course-Material Answer
 
@@ -436,6 +462,30 @@ The Space still works after restart because bootstrapping re-seeds the eval corp
 corpus can be backed by Pinecone. Admin-created production state is still lost unless SQLite/uploads
 are on persistent storage. If old uploaded vectors remain in Pinecone after `/data` is wiped, the app
 filters them out because there is no live SQLite document row for those uploads.
+
+## Rerank Demo Toggle Recommendation
+
+Keep `GENACADEMY_RERANK_ENABLED=false` for the normal Hugging Face Space demo unless the rerank model
+has been deliberately provisioned in the image/cache. The measured rerank slice improved retrieval
+quality, but it also added material latency:
+
+| Run | recall@k | precision@k | MRR | p95 retrieval latency |
+| --- | ---: | ---: | ---: | ---: |
+| Baseline hybrid | 0.67 | 0.22 | 0.55 | 286 ms |
+| Hybrid + rerank | 0.79 | 0.25 | 0.58 | 886 ms |
+
+The right demo stance is:
+
+- **Default live Space:** keep rerank off. This keeps the browser demo responsive and avoids a
+  rerank-model cache failure in the Docker image.
+- **Accuracy story:** show `eval/phase2-rerank-delta.md` and the Compass operating-model diagram as
+  evidence that rerank was implemented, measured, and intentionally left default-off.
+- **Optional quality demo:** enable rerank only in a controlled environment where
+  `cross-encoder/ms-marco-MiniLM-L6-v2` is already present, then use one or two known questions to
+  show the better ranking. Do not discover this live during the final demo.
+- **If enabling on Hugging Face:** rebuild or otherwise provision the rerank model first, then set
+  `GENACADEMY_RERANK_ENABLED=true`. Leaving `GENACADEMY_RERANK_LOCAL_FILES_ONLY=true` is safer for
+  deterministic startup; setting it false can trigger downloads during boot and make the demo brittle.
 
 ## Why Hugging Face Spaces
 

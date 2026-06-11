@@ -4,24 +4,25 @@
 <main class="min-h-screen flex items-center justify-center px-4 py-10">
   <section class="w-full max-w-sm space-y-6">
     <div class="space-y-2 text-center">
-      <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">GenAcademy</p>
-      <h1 class="text-3xl font-semibold tracking-tight">Create your Compass account</h1>
-      <p class="text-sm text-slate-600">Evidence-first answers from the cohort materials.</p>
+      <p class="gc-eyebrow">GenAcademy Compass</p>
+      <h1 class="gc-h1 text-3xl">Create your Compass account</h1>
+      <div class="mx-auto h-2.5 w-20" style="background:var(--accent);border:2px solid var(--ink)"></div>
+      <p class="pt-1 text-sm" style="color:var(--mute)">Evidence-first answers from the cohort materials.</p>
     </div>
-    <form method="post" action="/signup" class="bg-white border border-slate-200 p-6 rounded-lg shadow-sm space-y-4">
-      {% if error %}<p class="text-red-600 text-sm">{{ error }}</p>{% endif %}
+    <form method="post" action="/signup" class="gc-card p-6 space-y-4">
+      {% if error %}<p class="text-sm font-semibold" style="color:var(--warn)">{{ error }}</p>{% endif %}
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-      <label class="block text-sm font-medium text-slate-700">Email
-        <input name="email" placeholder="email" class="mt-1 w-full border border-slate-300 rounded-md px-3 py-2">
+      <label class="block text-sm font-semibold" style="color:var(--ink)">Email
+        <input name="email" placeholder="email" class="gc-input mt-1 w-full px-3 py-2">
       </label>
-      <label class="block text-sm font-medium text-slate-700">Password
-        <input name="password" type="password" placeholder="password" class="mt-1 w-full border border-slate-300 rounded-md px-3 py-2">
+      <label class="block text-sm font-semibold" style="color:var(--ink)">Password
+        <input name="password" type="password" placeholder="password" class="gc-input mt-1 w-full px-3 py-2">
       </label>
-      <label class="block text-sm font-medium text-slate-700">Invite code
-        <input name="code" placeholder="invite code" class="mt-1 w-full border border-slate-300 rounded-md px-3 py-2">
+      <label class="block text-sm font-semibold" style="color:var(--ink)">Invite code
+        <input name="code" placeholder="invite code" class="gc-input mt-1 w-full px-3 py-2">
       </label>
-      <button class="w-full bg-slate-900 text-white rounded-md py-2 font-medium">Sign up</button>
-      <p class="text-center text-sm text-slate-500"><a class="underline" href="/login">Back to sign in</a></p>
+      <button class="gc-btn-primary w-full py-2.5">Sign up</button>
+      <p class="text-center text-sm" style="color:var(--mute)"><a class="gc-link" href="/login">Back to sign in</a></p>
     </form>
   </section>
 </main>
