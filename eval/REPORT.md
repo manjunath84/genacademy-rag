@@ -5,25 +5,29 @@
 | Metric | Value |
 |---|---|
 | Retrieval questions | 12 |
-| recall@k | 0.67 |
-| precision@k | 0.22 |
-| MRR | 0.55 |
-| refusal correctness | 0.73 |
-| faithfulness % (LLM-judge) | 58% |
+| recall@k | 0.79 |
+| precision@k | 0.25 |
+| MRR | 0.58 |
+| refusal correctness | 1.00 |
+| faithfulness % (LLM-judge) | 100% |
 
-## Answer UX prompt rerun
+## Final rerank/Nebius run
 
-Regenerated on 2026-06-10 with `GENACADEMY_PROVIDER=nebius` and judge model
-`meta-llama/Llama-3.3-70B-Instruct` after changing the answer prompt from terse
-single-sentence answers to overview paragraph + key-point bullets.
+Regenerated on 2026-06-11 with `GENACADEMY_PROVIDER=nebius`,
+`NEBIUS_MODEL=Qwen/Qwen3-30B-A3B-Instruct-2507`, `GENACADEMY_RERANK_ENABLED=true`,
+`GENACADEMY_RERANK_POOL=20`, and `GENACADEMY_RERANK_DEVICE=cpu`.
 
-| Run | recall@k | precision@k | MRR | faithfulness |
-|---|---|---|---|---|
-| Before answer-card prompt change | 0.67 | 0.22 | 0.55 | 58% |
-| After answer-card prompt change | 0.67 | 0.22 | 0.55 | 58% |
+Judge caveat: `scripts/run_eval.py` uses the same provider/model for generation and the LLM judge,
+so this report was judged by `Qwen/Qwen3-30B-A3B-Instruct-2507`; the 58%->100% faithfulness and
+0.73->1.00 refusal deltas versus the prior `meta-llama/Llama-3.3-70B-Instruct`-judged run are not
+attributable to rerank alone.
 
-Faithfulness delta: **0 percentage points**. Retrieval metrics are unchanged, as required; this
-slice did not change retrieval, chunking, grader logic, or the gold set.
+The generation model was selected from the live Nebius model catalog. `Qwen/Qwen3-30B-A3B-Instruct-2507`
+was the fastest candidate that passed the load-bearing JSON grader gate: 5 measured answer-shaped
+calls averaged 1491.2 ms, and 10/10 grader-shaped JSON-mode calls parsed cleanly.
+
+Faithfulness here measures grounding in retrieved context, not answer correctness; q5 is the caution
+case because recall was 0.00 while the answer was still judged faithful.
 
 ## Per-question
 
@@ -32,15 +36,15 @@ slice did not change retrieval, chunking, grader logic, or the gold set.
 | q1 | answerable | 1.00 | 0.20 | 1.00 | False | True |
 | q2 | answerable | 1.00 | 0.40 | 1.00 | False | True |
 | q3 | answerable | 1.00 | 0.40 | 1.00 | False | True |
-| q4 | answerable | 1.00 | 0.20 | 0.33 | False | True |
-| q5 | exact_match | 0.00 | 0.00 | 0.00 | True | False |
+| q4 | answerable | 1.00 | 0.20 | 0.50 | False | True |
+| q5 | exact_match | 0.00 | 0.00 | 0.00 | False | True |
 | q6 | exact_match | 1.00 | 0.40 | 1.00 | False | True |
-| q7 | chunking_stress | 0.00 | 0.00 | 0.00 | True | False |
-| q8 | chunking_stress | 1.00 | 0.20 | 0.50 | False | False |
-| q9 | multi_document | 0.50 | 0.20 | 0.50 | False | True |
-| q10 | multi_document | 0.50 | 0.20 | 0.25 | True | False |
-| q11 | ambiguous | 1.00 | 0.40 | 1.00 | True | False |
-| q12 | ambiguous | 0.00 | 0.00 | 0.00 | False | True |
+| q7 | chunking_stress | 1.00 | 0.20 | 0.33 | False | True |
+| q8 | chunking_stress | 1.00 | 0.20 | 0.33 | False | True |
+| q9 | multi_document | 0.50 | 0.20 | 0.33 | False | True |
+| q10 | multi_document | 0.50 | 0.20 | 0.25 | False | True |
+| q11 | ambiguous | 1.00 | 0.40 | 1.00 | False | True |
+| q12 | ambiguous | 0.50 | 0.20 | 0.25 | False | True |
 | q13 | unanswerable | — | — | — | True | — |
 | q14 | unanswerable | — | — | — | True | — |
 | q15 | unanswerable | — | — | — | True | — |
@@ -49,16 +53,15 @@ slice did not change retrieval, chunking, grader logic, or the gold set.
 
 | Symptom | Cause | Fix | Question |
 |---|---|---|---|
-| Exact-match question refused; gold span at a compact table row not retrieved | ChunkingBoundary — line 53 ("RAG & Context Engineering" tagline) is a one-cell markdown table entry; 1000-char window strips the surrounding section header into the adjacent chunk, leaving this chunk with cosine < 0.20 | Increase chunk_overlap 150→300 chars so section headers bleed into the next chunk; or lower cosine_threshold to 0.15 | q5 |
-| Comprehensive-list question refused; gold span covers 13 lines (lines 29-41, ~700 chars) | ChunkingBoundary — fixed 1000-char window splits the Week-1 prereq table across two chunks; neither half reaches threshold on its own | Switch to sentence/table-boundary chunker for catalog sections; Phase-2 multi-chunk stitching via reranker | q7 |
-| Retrieval succeeded (recall=1.00) but judge flags context as truncated | ChunkingBoundary — Week-6 resources table exceeds 1000 chars; retrieved chunk holds only the table header + first row; judge scores incomplete context as unfaithful (score=1) | Raise chunk_size to 1500 for table-heavy sections; Phase-2 stitches top-2 adjacent chunks before generation | q8 |
-| Only 1 of 2 required gold spans retrieved; code-file span missed | TopKTooSmall — top_k=5 spread across two repos; langchain_prompts.py lines 13-43 ranked 6th against denser catalog text | Raise top_k to 8 for multi-document categories; Phase-2 cross-encoder reranker consolidates candidates across repos | q9 |
-| Partial retrieval (recall=0.50) triggered incorrect refusal | TopKTooSmall + RefusalFalsePositive — second gold span (2-line README entry) ranked outside top-5; low coverage depressed answer confidence below refusal threshold despite finding the first span | Raise top_k to 8; gate refusal on max chunk score (≥ 0.35) rather than mean confidence so partial-but-useful retrieval still answers | q10 |
-| All 3 gold spans retrieved (recall=1.00) but system refused to answer | RefusalFalsePositive — broad query "what does it say about embeddings?" disperses cosine scores across many chunks; mean confidence falls below refusal threshold even though individual chunks score well | Gate refusal on max chunk score, not mean; add query-intent classifier to suppress refusal on broad informational questions | q11 |
+| Exact-match gold span was not retrieved in top-5, though the answer path no longer refused | ChunkingBoundary - line 53 is a compact Week-2 table row; the fixed-size chunks rank broader overview and adjacent catalog chunks higher than the one-line tagline chunk | Section-aware/table-aware chunking for catalog tables, or adjacent-row stitching for compact table rows | q5 |
+| Only one of two required multi-document spans was retrieved | TopKTooSmall - rerank lifted the catalog structured-output row, but the companion `langchain_prompts.py` extraction prompt remained outside top-5 behind notebook/README chunks | For multi-document questions, expand `top_k` or add query decomposition before rerank; keep the reranker as the first improvement because it recovered the catalog side | q9 |
+| Only the catalog prompt-resource span was retrieved; the companion README requirements span was missed | TopKTooSmall + cross-repo coverage - top-5 includes the Week-1 catalog prompt rows but not README lines 57-59 for Python/tooling requirements | Multi-hop retrieval or per-repo diversification before final top-5 truncation | q10 |
+| Ambiguous "tool use" query retrieved the Week-3 tool-use row but missed the Week-1 related row | Ambiguity - the query can mean curriculum location or prerequisite resource; rerank chose the direct Week-3 "tool use" curriculum hit | Preserve both interpretations with query expansion or diversified final ranking for ambiguous curriculum terms | q12 |
 
 ## Model-swap demo
 
-Same question answered by two providers (2026-06-08). Retrieval + embeddings unchanged (local STEmbedder); only the generation model swaps.
+Same question answered by two providers (2026-06-08). Retrieval + embeddings unchanged
+(local STEmbedder); only the generation model swaps.
 
 **Question:** Which resource in the Gen Academy catalog covers chunking strategies for RAG?
 

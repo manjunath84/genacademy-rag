@@ -1,54 +1,66 @@
 # Phase 2 Rerank Eval Delta
 
-**Date:** 2026-06-09
+**Date:** 2026-06-11
 **Corpus:** immutable `eval` Chroma collection
 **Gold set:** `src/genacademy_rag/eval/gold/gold_set.yaml`
 **Top K:** 5
 **Candidate K:** 20
 **Rerank model:** `cross-encoder/ms-marco-MiniLM-L6-v2`
 **Rerank device for committed run:** `cpu`
-**Rerank pool:** 0 = full fused union when 0
+**Final generation model for full eval:** `Qwen/Qwen3-30B-A3B-Instruct-2507` on the Nebius preset
+**Rerank pool:** `0` = full fused union; `20` = final shipped cap
 **Rerank local files only:** true
 
 ## Small-N Caveat
 
-This eval has n=12 retrieval-scored questions. One question changes aggregate recall or MRR by about 0.08, so per-question movement is the meaningful evidence. This report does not claim statistical significance.
+This eval has n=12 retrieval-scored questions. One question changes aggregate recall or MRR by about
+0.08, so per-question movement is the meaningful evidence. This report does not claim statistical
+significance.
 
 ## Aggregate Metrics
 
 | Run | recall@k | precision@k | MRR | n |
 | --- | ---: | ---: | ---: | ---: |
 | Baseline hybrid | 0.67 | 0.22 | 0.55 | 12 |
-| Hybrid + rerank | 0.79 | 0.25 | 0.58 | 12 |
+| Hybrid + rerank, pool=0 | 0.79 | 0.25 | 0.58 | 12 |
+| Hybrid + rerank, pool=20 | 0.79 | 0.25 | 0.58 | 12 |
 
 ## Retrieval Latency
 
 | Run | mean ms | p50 ms | p95 ms |
 | --- | ---: | ---: | ---: |
-| Baseline hybrid | 82.864 | 77.616 | 286.264 |
-| Hybrid + rerank | 565.625 | 509.416 | 886.352 |
+| Baseline hybrid | 121 | 46 | 1227 |
+| Hybrid + rerank, pool=0 | 680 | 534 | 1469 |
+| Hybrid + rerank, pool=20 | 429 | 334 | 1165 |
+
+The baseline latency was re-measured on 2026-06-11 and its p95 now exceeds the pool=20 rerank p95;
+with only 15 questions, the p95 column is noisy and this anomaly should not be read as a durable
+latency ordering.
 
 ## Per-Question Movement
 
-| Question | Category | Baseline recall | Rerank recall | Baseline MRR | Rerank MRR | Baseline top chunk | Rerank top chunk | Movement |
-| --- | --- | ---: | ---: | ---: | ---: | --- | --- | --- |
-| q1 | answerable | 1.00 | 1.00 | 1.00 | 1.00 | awesome-agentic-ai-resources/README.md@5dfb869::0 | awesome-agentic-ai-resources/README.md@5dfb869::0 | unchanged |
-| q2 | answerable | 1.00 | 1.00 | 1.00 | 1.00 | Mastering-Agentic-AI-Week1/Langchain Basics/README.md@3aa31df::0 | Mastering-Agentic-AI-Week1/Langchain Basics/README.md@3aa31df::1 | unchanged |
-| q3 | answerable | 1.00 | 1.00 | 1.00 | 1.00 | awesome-agentic-ai-resources/README.md@5dfb869::10 | awesome-agentic-ai-resources/README.md@5dfb869::10 | unchanged |
-| q4 | answerable | 1.00 | 1.00 | 0.33 | 0.50 | Mastering-Agentic-AI-Week1/Langchain Basics/Langchain_Fundamentals.ipynb@3aa31df::2 | Mastering-Agentic-AI-Week1/Langchain Basics/Langchain_Fundamentals.ipynb@3aa31df::2 | helped |
-| q5 | exact_match | 0.00 | 0.00 | 0.00 | 0.00 | awesome-agentic-ai-resources/README.md@5dfb869::0 | awesome-agentic-ai-resources/README.md@5dfb869::0 | unchanged |
-| q6 | exact_match | 1.00 | 1.00 | 1.00 | 1.00 | awesome-agentic-ai-resources/README.md@5dfb869::24 | awesome-agentic-ai-resources/README.md@5dfb869::24 | unchanged |
-| q7 | chunking_stress | 0.00 | 1.00 | 0.00 | 0.25 | awesome-agentic-ai-resources/README.md@5dfb869::0 | awesome-agentic-ai-resources/README.md@5dfb869::0 | helped |
-| q8 | chunking_stress | 1.00 | 1.00 | 0.50 | 0.33 | awesome-agentic-ai-resources/README.md@5dfb869::0 | awesome-agentic-ai-resources/README.md@5dfb869::1 | hurt |
-| q9 | multi_document | 0.50 | 0.50 | 0.50 | 0.33 | Mastering-Agentic-AI-Week1/Langchain Basics/Langchain_Fundamentals.ipynb@3aa31df::0 | Mastering-Agentic-AI-Week1/Langchain Basics/README.md@3aa31df::0 | hurt |
-| q10 | multi_document | 0.50 | 0.50 | 0.25 | 0.25 | Mastering-Agentic-AI-Week1/Langchain Basics/README.md@3aa31df::0 | Mastering-Agentic-AI-Week1/Langchain Basics/README.md@3aa31df::0 | unchanged |
-| q11 | ambiguous | 1.00 | 1.00 | 1.00 | 1.00 | awesome-agentic-ai-resources/README.md@5dfb869::8 | awesome-agentic-ai-resources/README.md@5dfb869::0 | unchanged |
-| q12 | ambiguous | 0.00 | 0.50 | 0.00 | 0.25 | awesome-agentic-ai-resources/README.md@5dfb869::1 | awesome-agentic-ai-resources/README.md@5dfb869::1 | helped |
-| q13 | unanswerable | n/a | n/a | n/a | n/a | awesome-agentic-ai-resources/README.md@5dfb869::12 | awesome-agentic-ai-resources/README.md@5dfb869::0 | unchanged |
-| q14 | unanswerable | n/a | n/a | n/a | n/a | awesome-agentic-ai-resources/README.md@5dfb869::24 | awesome-agentic-ai-resources/README.md@5dfb869::24 | unchanged |
-| q15 | unanswerable | n/a | n/a | n/a | n/a | awesome-agentic-ai-resources/README.md@5dfb869::0 | awesome-agentic-ai-resources/README.md@5dfb869::0 | unchanged |
+| Question | Category | Baseline recall | Pool=0 recall | Pool=20 recall | Baseline MRR | Pool=0 MRR | Pool=20 MRR | Movement at pool=20 |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| q1 | answerable | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | unchanged |
+| q2 | answerable | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | unchanged |
+| q3 | answerable | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | unchanged |
+| q4 | answerable | 1.00 | 1.00 | 1.00 | 0.33 | 0.50 | 0.50 | helped |
+| q5 | exact_match | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | unchanged |
+| q6 | exact_match | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | unchanged |
+| q7 | chunking_stress | 0.00 | 1.00 | 1.00 | 0.00 | 0.25 | 0.33 | helped |
+| q8 | chunking_stress | 1.00 | 1.00 | 1.00 | 0.50 | 0.33 | 0.33 | hurt |
+| q9 | multi_document | 0.50 | 0.50 | 0.50 | 0.50 | 0.33 | 0.33 | hurt |
+| q10 | multi_document | 0.50 | 0.50 | 0.50 | 0.25 | 0.25 | 0.25 | unchanged |
+| q11 | ambiguous | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | unchanged |
+| q12 | ambiguous | 0.00 | 0.50 | 0.50 | 0.00 | 0.25 | 0.25 | helped |
+| q13 | unanswerable | n/a | n/a | n/a | n/a | n/a | n/a | unchanged |
+| q14 | unanswerable | n/a | n/a | n/a | n/a | n/a | n/a | unchanged |
+| q15 | unanswerable | n/a | n/a | n/a | n/a | n/a | n/a | unchanged |
 
 ## Refusal-Behavior Proxy From Top-K Membership
+
+Provenance: this proxy table is carried forward from the 2026-06-09 pool=0 rerank run; it was not
+regenerated for the final pool=20 measurement.
 
 | Question | Baseline max cosine | Rerank max cosine | Baseline fallback answerable @0.2 | Rerank fallback answerable @0.2 | Change |
 | --- | ---: | ---: | --- | --- | --- |
@@ -70,4 +82,19 @@ This eval has n=12 retrieval-scored questions. One question changes aggregate re
 
 ## Interpretation
 
-Rerank improved retrieval quality on this run: recall, precision, and MRR all increased. The cost is material: p95 retrieval latency rose from 286.264 ms to 886.352 ms on the CPU-pinned run. The likely cause is that the committed eval scores full real chunks of about 1000 characters each on CPU fp32, while the Phase A synthetic timing used much shorter query-passage pairs. This exceeds the Phase 2 300 ms caution threshold, so keep rerank disabled by default unless demo quality is worth the local latency. Fallback-proxy answerability did not change at threshold 0.2 in this run.
+Rerank improved retrieval quality on this run: recall rose from 0.67 to 0.79, precision from 0.22 to
+0.25, and MRR from 0.55 to 0.58. The final `GENACADEMY_RERANK_POOL=20` cap preserved the full-union
+recall win while lowering mean retrieval latency from 680.258 ms to 429.110 ms versus pool=0 on the
+CPU-pinned run. The latency columns are from one 15-question command per configuration and include
+local warm-up noise, so the reliable conclusion is directional: pool=20 keeps the retrieval win and is
+the better serving default for the Space.
+
+The full 15-question eval was regenerated on the Nebius preset with
+`NEBIUS_MODEL=Qwen/Qwen3-30B-A3B-Instruct-2507`, `GENACADEMY_RERANK_ENABLED=true`, and
+`GENACADEMY_RERANK_POOL=20`. It produced recall@k 0.79, precision@k 0.25, MRR 0.58, refusal
+correctness 1.00, and LLM-judge faithfulness 100% in `eval/REPORT.md`.
+
+Caveat: `scripts/run_eval.py` uses the same provider/model for generation and the LLM judge, so this
+run was judged by `Qwen/Qwen3-30B-A3B-Instruct-2507`; the 58%->100% faithfulness and 0.73->1.00
+refusal deltas versus the prior `meta-llama/Llama-3.3-70B-Instruct`-judged run are not attributable
+to rerank alone.
