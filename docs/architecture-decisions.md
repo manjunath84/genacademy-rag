@@ -5,7 +5,7 @@ Engineering"). This is the decision log + reasoning. The full design spec and th
 are separate documents; this is the "why" behind the locked choices so a future session (or a
 hiring manager reading the repo) can see the thinking, not just the result.*
 
-**Date:** 2026-06-07 · **Status:** stack locked, design in progress.
+**Date:** 2026-06-07 · **Status:** stack locked; current posture reconciled after deploy and answer UX.
 
 ---
 
@@ -43,7 +43,7 @@ This is a **fresh standalone build (Branch B)**, its own repo, *not* built on th
 | **RAG orchestration** | LangChain primitives + **one** small LangGraph graph (refusal/escalation branch only) | Linear retrieve→rerank→generate is LCEL; LangGraph earns its place only for the confidence→{answer\|refuse} state machine. See §4.2. |
 | **Model provider** | **Nebius Token Factory** (generation; embeddings optional) | Mandatory cohort constraint *and* cloud API → identical local/deployed, no local GPU. Free credits expected. See §4.3. |
 | **Vector store** | **Pluggable: Chroma (local) ↔ Pinecone (cloud)** | Two config presets behind one `VectorStore` interface = the "swappable" requirement made concrete + a great demo moment. Free Pinecone credits expected. |
-| **Relational DB** | **Pluggable: SQLite (local) ↔ Postgres (deploy)** | Pinecone holds vectors only; users/roles, document metadata, and the **usage log** need a relational store. The usage table *is* the admin-dashboard differentiator. See §4.5. |
+| **Relational DB** | **Pluggable: SQLite now; Postgres when persistence or multi-instance needs justify it** | Pinecone holds vectors only; users/roles, document metadata, and the **usage log** need a relational store. SQLite is sufficient for the course demo; the datastore seam preserves the Postgres path. See §4.5 and `docs/minimal-system-design.md`. |
 | **Auth** | Server-session + role (`admin` / `member`) — *details TBD in design* | Trivial with HTMX (server sessions); avoids JWT/CORS tax of an SPA. Exact signup/gating model still open. |
 
 ## 4. The reasoning (architect's notes)
@@ -103,7 +103,7 @@ FastAPI (one service)
 │   ├── Retriever    iface ── hybrid (dense + BM25, Phase 0; rerank = Phase 2)
 │   └── LangGraph: retrieve → grade → {answer+citations | refuse/escalate}
 ├── ModelProvider iface ── Nebius (generation; mandatory call)
-└── Relational DB iface ── SQLite (local) ↔ Postgres (deploy)
+└── Relational DB iface ── SQLite now ↔ Postgres when persistence or multi-instance needs justify it
     └── tables: users, documents, chunks_meta, usage_log
 ```
 
@@ -140,7 +140,7 @@ until three blocking blanks were closed. Every finding and the decision taken, f
 | **4.2 / 4.5** | Add precision@k + MRR, failure taxonomy, top-k=5 | **Accept.** |
 | **3.1 / 3.3 / 3.4 / 4.6** | Annotation time (~6 h), move `usage_log`→Phase 1, spike rate-limits, pin LangChain versions, "eval green by Day 2 before UI polish" | **Accept all.** |
 | **3.2** | "Divergences from sample solution" in the write-up | **Accept.** |
-| **4.4 (architecture)** | Add `Chunker` interface; watch `Datastore` God-interface for Postgres | **Accept** — `Chunker` added; split `Datastore` into User/Doc/Usage stores when Postgres preset arrives. |
+| **4.4 (architecture)** | Add `Chunker` interface; watch `Datastore` God-interface for Postgres | **Accept** — `Chunker` added; split `Datastore` into User/Doc/Usage stores if Postgres or multi-instance persistence arrives. |
 
 **Net effect:** the three blocking blanks (grader mechanism, hybrid-in-Phase-0, PDF parse fallback)
 are closed in `design.md`; the spike (§9) now gates more (JSON mode, throughput, parse quality).

@@ -82,7 +82,7 @@ retrieval quality, or evaluation."* → **eval is a first-class deliverable.**
 | Chunking | **Fixed-size + overlap (≈512 / 64 tok)** Phase 0, behind a **`Chunker`** interface. Section-aware = Phase 2 eval axis. |
 | Retrieval | **Hybrid: dense (Chroma) + BM25 (`rank-bm25`) fused via RRF**, `top_k=5`, in **Phase 0**. Cross-encoder **rerank** = Phase 2. |
 | Vector store | Pluggable `VectorStore`: **Chroma** (Phase 0) → **Pinecone** (Phase 2). |
-| Relational DB | Pluggable `Datastore`: **SQLite** (Phase 0) → **Postgres** (deploy). |
+| Relational DB | Pluggable `Datastore`: **SQLite** now; **Postgres** when persistence or multi-instance needs justify it. |
 | Deployment | **Hybrid**: local-first, deploy-ready (Docker → HF Space). Deploy = Phase 2. |
 
 **Pluggability rule:** interface + **one** implementation at MVP; the second impl is a Phase-2 demo.
@@ -130,7 +130,8 @@ exists with a **scores table** (recall@k, precision@k, MRR, faithfulness, refusa
 - **Pinecone** preset — second `VectorStore` impl; live "Chroma → Pinecone, one config line".
 - **Cross-encoder rerank** + **section-aware chunking** — each a before/after eval delta.
 - **Nebius embeddings** preset — the "swap the embedding provider" demo.
-- **Deploy** (Docker → HF Space) + Postgres preset + auth hardening; smoke-check live URL.
+- **Deploy** (Docker → HF Space) + auth hardening; smoke-check live URL. Postgres remains a future
+  preset for persistence or multi-instance needs, not a deploy prerequisite.
 
 ## 6. Architecture & data flow
 
@@ -150,7 +151,8 @@ the only HTTP/template layer.
 - `VectorStore` — `ChromaStore` (Phase 0) → `PineconeStore` (Phase 2).
 - `Retriever` — `HybridRetriever` (dense + BM25 + RRF, Phase 0) → + cross-encoder rerank (Phase 2).
 - `Datastore` — users, documents, chunk metadata (+ usage log in Phase 1). *Watch scope:* split into
-  `UserStore` / `DocStore` / `UsageStore` when the Postgres preset arrives; keep as one for Phase 0.
+  `UserStore` / `DocStore` / `UsageStore` when Postgres or multi-instance persistence arrives; keep
+  as one datastore until that pressure is real.
 
 ### Two pipelines
 - **Ingestion (admin/script, offline):** `Loader → clean → Chunker(+metadata) → embed →

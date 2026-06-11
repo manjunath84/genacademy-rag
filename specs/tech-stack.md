@@ -20,7 +20,7 @@ FastAPI (one service)
 │   ├── VectorStore iface — Chroma (P0) → Pinecone (P2)
 │   ├── Retriever  iface  — Hybrid dense+BM25+RRF, top_k=5 (P0) → + cross-encoder rerank (P2)
 │   └── LangGraph graph   — retrieve → grade → {answer + citations | refuse}
-└── Datastore iface — SQLite (P0) → Postgres (deploy)
+└── Datastore iface — SQLite now → Postgres when persistence or multi-instance needs justify it
     └── tables: users · documents · chunks_meta   (usage_log → P1)
 ```
 

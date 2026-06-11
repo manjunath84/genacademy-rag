@@ -137,7 +137,7 @@ All prompts in this section are **reconstructed** — they are faithful paraphra
 **Prompt (reconstructed):**
 > Write a Docker + Hugging Face Space deployment plan for this FastAPI app. Requirements: first-boot eval corpus seeding via `deploy/bootstrap.py`, `GENACADEMY_DATA_DIR` for persistent storage, `GENACADEMY_SECURE_COOKIES` for Space environments, and a live HTTP smoke test that hits the login endpoint and validates a 200 response. The Space uses ephemeral `/data` unless paid storage is attached — document this limitation clearly.
 
-**Produced:** `docs/superpowers/plans/2026-06-10-genacademy-rag-phase2-docker-hf-space-deploy.md`, then `deploy/bootstrap.py`, `Dockerfile`, `scripts/smoke_test.sh`, and `docs/deploy.md` runbook. Plan reviewed by Kimchi before code; PR #9 reviewed by 4 agents after. Post-merge hardening commit added.
+**Produced:** `docs/superpowers/plans/2026-06-10-genacademy-rag-phase2-docker-hf-space-deploy.md`, then `deploy/bootstrap.py`, `Dockerfile`, `scripts/smoke_http.py`, and `docs/deploy.md` runbook. Plan reviewed by Kimchi before code; PR #10 reviewed by 4 agents after. Post-merge hardening commit added.
 
 ---
 

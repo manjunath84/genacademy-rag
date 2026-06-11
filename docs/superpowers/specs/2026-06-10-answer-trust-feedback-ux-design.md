@@ -1,6 +1,6 @@
 # Answer Trust & Feedback UX — Design
 
-**Date:** 2026-06-10 · **Status:** approved in brainstorming, pre-implementation
+**Date:** 2026-06-10 · **Status:** shipped in PR #11
 **Scope:** one pre-submission slice. Brainstormed with visual mockups (`.superpowers/brainstorm/`);
 the approved card layout is `answer-card-v2.html` in that session.
 
@@ -149,9 +149,9 @@ CREATE TABLE IF NOT EXISTS feedback (
 
 - **Deterministic retrieval eval (recall/precision/MRR): untouched.** No retrieval,
   chunking, or grader change in this slice.
-- **Faithfulness eval: must be re-run** after the `ANSWER_SYSTEM` change — answer
-  format directly affects the LLM-judge score (currently 58%). Report regenerated with
-  before/after noted in `eval/REPORT.md`.
+- **Faithfulness eval re-run** after the `ANSWER_SYSTEM` change — answer format directly affects the
+  LLM-judge score. Report regenerated with before/after noted in `eval/REPORT.md`; faithfulness
+  stayed at 58%.
 - New unit tests (offline, FakeModelProvider unchanged):
   - `merge_citations`: overlap merge, adjacency merge, non-contiguous separation,
     multi-file, uploaded-file grouping, snippet truncation.
@@ -175,7 +175,7 @@ CREATE TABLE IF NOT EXISTS feedback (
   3. User feedback is captured and visible to admins (future eval-mining input).
   4. An AI-mistake disclaimer is always visible on generated answers.
 - **`specs/roadmap.md`** — add this slice as **"Answer trust & feedback UX"**
-  (pre-submission, in progress).
+  (pre-submission, shipped).
 - **`specs/tech-stack.md`** — unchanged; everything here uses the locked stack
   (Alpine.js was already in it).
 
