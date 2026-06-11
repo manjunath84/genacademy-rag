@@ -414,7 +414,7 @@ def test_signup_redeems_invite_and_logs_in(monkeypatch, tmp_path):
     )
     assert created.status_code == 303
     home = c.get("/")
-    assert "Ask the cohort materials" in home.text
+    assert "GenAcademy Compass" in home.text
 
 
 def test_create_app_uses_secure_cookie_setting(monkeypatch, tmp_path):

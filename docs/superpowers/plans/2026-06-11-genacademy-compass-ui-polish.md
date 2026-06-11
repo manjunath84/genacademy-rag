@@ -410,7 +410,7 @@ The user-facing app title is **GenAcademy Compass**; the repository and technica
 In `docs/deploy.md`, replace the old smoke expectation:
 
 ```markdown
-Expected: the chat screen loads with the heading **Ask the cohort materials**.
+Expected: the chat screen loads with the heading **GenAcademy Compass**.
 ```
 
 with:
