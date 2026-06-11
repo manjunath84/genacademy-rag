@@ -17,9 +17,17 @@ Regenerated on 2026-06-11 with `GENACADEMY_PROVIDER=nebius`,
 `NEBIUS_MODEL=Qwen/Qwen3-30B-A3B-Instruct-2507`, `GENACADEMY_RERANK_ENABLED=true`,
 `GENACADEMY_RERANK_POOL=20`, and `GENACADEMY_RERANK_DEVICE=cpu`.
 
+Judge caveat: `scripts/run_eval.py` uses the same provider/model for generation and the LLM judge,
+so this report was judged by `Qwen/Qwen3-30B-A3B-Instruct-2507`; the 58%->100% faithfulness and
+0.73->1.00 refusal deltas versus the prior `meta-llama/Llama-3.3-70B-Instruct`-judged run are not
+attributable to rerank alone.
+
 The generation model was selected from the live Nebius model catalog. `Qwen/Qwen3-30B-A3B-Instruct-2507`
 was the fastest candidate that passed the load-bearing JSON grader gate: 5 measured answer-shaped
 calls averaged 1491.2 ms, and 10/10 grader-shaped JSON-mode calls parsed cleanly.
+
+Faithfulness here measures grounding in retrieved context, not answer correctness; q5 is the caution
+case because recall was 0.00 while the answer was still judged faithful.
 
 ## Per-question
 

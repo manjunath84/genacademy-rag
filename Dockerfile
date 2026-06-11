@@ -25,6 +25,8 @@ RUN uv run --no-sync python -c \
     "from sentence_transformers import SentenceTransformer; SentenceTransformer('all-MiniLM-L6-v2')"
 
 # Pre-download the cross-encoder rerank model so GENACADEMY_RERANK_ENABLED=true works offline.
+# The build-only secret is required because Settings.from_env() rejects the default session secret
+# when GENACADEMY_SECURE_COOKIES=true.
 RUN GENACADEMY_SESSION_SECRET=build-time-rerank-provision \
     uv run --no-sync python scripts/provision_rerank_model.py
 

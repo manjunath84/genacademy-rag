@@ -536,8 +536,8 @@ HTTP.
   in-memory BM25 corpus are not a multi-process serving target in this slice.
 - The offline embedding model is baked into the Docker image under `HF_HOME=/app/.cache/huggingface`.
   Rebuild the image when changing `GENACADEMY_EMBED_MODEL`.
-- The rerank model is not baked into this Docker image. Leave `GENACADEMY_RERANK_ENABLED=false`
-  unless the rerank model is separately provisioned inside the image/cache.
+- The rerank model is baked into this Docker image. Keep `GENACADEMY_RERANK_LOCAL_FILES_ONLY=true`
+  so rerank-enabled boots use the provisioned image cache instead of runtime downloads.
 
 ## Postgres
 
