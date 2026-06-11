@@ -29,6 +29,8 @@
       --mineral-text:#25496D;
       --mineral-bg:#E7EEF5;
       --mineral-border:#C6D6E2;
+      --link-text:#1F5E8C;
+      --link-underline:#9FB8CA;
       --brass-bg:#F4EFDE;
       --brass-border:#C8A76A;
     }
@@ -180,16 +182,16 @@
     .gc-source>summary{cursor:pointer;list-style:none}
     .gc-source>summary::-webkit-details-marker{display:none}
     .gc-link{
-      color:var(--mineral-text);
+      color:var(--link-text);
       font-weight:600;
       text-decoration:underline;
-      text-decoration-color:var(--mineral-border);
+      text-decoration-color:var(--link-underline);
       text-decoration-thickness:1px;
       text-underline-offset:3px;
     }
     .gc-link:hover{
       color:var(--dark);
-      text-decoration-color:var(--mineral-text);
+      text-decoration-color:var(--link-text);
     }
     .gc-snippet{
       background:var(--brass-bg);
