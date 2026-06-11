@@ -190,6 +190,35 @@ def test_feedback_happy_path_persists_and_returns_fragment(monkeypatch, tmp_path
     assert c.app.state.datastore.feedback_summary()["up"] == 1
 
 
+def test_feedback_rejects_unknown_query_id(monkeypatch, tmp_path):
+    c = _client(monkeypatch, tmp_path)
+    _login(c)
+    token = _csrf(c.get("/").text)
+
+    r = c.post("/feedback", data={"query_id": 404, "verdict": 1, "csrf_token": token})
+
+    assert r.status_code == 404
+    assert c.app.state.datastore.feedback_summary() == {"up": 0, "down": 0}
+
+
+def test_feedback_rejects_query_owned_by_another_user(monkeypatch, tmp_path):
+    c = _client(monkeypatch, tmp_path)
+    _login(c)
+    token = _csrf(c.get("/").text)
+    owner_qid, _ = _ask_and_get_query_id(c, token)
+    assert owner_qid is not None
+
+    _login(c, "admin@genacademy.local", "admin")
+    admin_token = _csrf(c.get("/").text)
+    r = c.post(
+        "/feedback",
+        data={"query_id": owner_qid, "verdict": -1, "csrf_token": admin_token},
+    )
+
+    assert r.status_code == 404
+    assert c.app.state.datastore.feedback_summary() == {"up": 0, "down": 0}
+
+
 def test_answer_card_renders_badge_sources_disclaimer(monkeypatch, tmp_path):
     c = _client(monkeypatch, tmp_path)
     _login(c)
@@ -260,6 +289,17 @@ def test_document_file_serves_pdf_inline(monkeypatch, tmp_path):
     assert r.status_code == 200
     assert r.headers["content-type"] == "application/pdf"
     assert "inline" in r.headers["content-disposition"]
+
+
+def test_document_file_serves_upload_with_slash_doc_id(monkeypatch, tmp_path):
+    c = _client(monkeypatch, tmp_path)
+    _login(c)
+    _store_doc(c, tmp_path, doc_id="pdf/abc123", suffix=".pdf")
+
+    r = c.get("/documents/pdf/abc123/file")
+
+    assert r.status_code == 200
+    assert r.headers["content-type"] == "application/pdf"
 
 
 def test_document_file_downloads_pptx(monkeypatch, tmp_path):

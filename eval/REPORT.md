@@ -55,3 +55,23 @@ slice did not change retrieval, chunking, grader logic, or the gold set.
 | Only 1 of 2 required gold spans retrieved; code-file span missed | TopKTooSmall — top_k=5 spread across two repos; langchain_prompts.py lines 13-43 ranked 6th against denser catalog text | Raise top_k to 8 for multi-document categories; Phase-2 cross-encoder reranker consolidates candidates across repos | q9 |
 | Partial retrieval (recall=0.50) triggered incorrect refusal | TopKTooSmall + RefusalFalsePositive — second gold span (2-line README entry) ranked outside top-5; low coverage depressed answer confidence below refusal threshold despite finding the first span | Raise top_k to 8; gate refusal on max chunk score (≥ 0.35) rather than mean confidence so partial-but-useful retrieval still answers | q10 |
 | All 3 gold spans retrieved (recall=1.00) but system refused to answer | RefusalFalsePositive — broad query "what does it say about embeddings?" disperses cosine scores across many chunks; mean confidence falls below refusal threshold even though individual chunks score well | Gate refusal on max chunk score, not mean; add query-intent classifier to suppress refusal on broad informational questions | q11 |
+
+## Model-swap demo
+
+Same question answered by two providers (2026-06-08). Retrieval + embeddings unchanged (local STEmbedder); only the generation model swaps.
+
+**Question:** Which resource in the Gen Academy catalog covers chunking strategies for RAG?
+
+**openrouter / meta-llama/llama-3.1-70b-instruct**
+```
+[Chunking Strategies for RAG](https://weaviate.io/blog/chunking-strategies-for-rag), Weaviate
+```
+
+**nebius / meta-llama/Llama-3.3-70B-Instruct**
+```
+The resource that covers chunking strategies for RAG is:
+[Chunking Strategies for RAG](https://weaviate.io/blog/chunking-strategies-for-rag) by Weaviate.
+```
+
+Both refused=False, same citation, different verbosity. Swap confirmed end-to-end.
+Run `GENACADEMY_PROVIDER=openrouter|nebius|openai` to reproduce.

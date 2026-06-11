@@ -126,6 +126,27 @@ def test_uploaded_file_groups_to_one_linked_row():
     assert v.snippet == "slide text A"
 
 
+def test_uploaded_file_link_preserves_slash_doc_id():
+    views = merge_citations(
+        [
+            _rc(
+                "slide text A",
+                doc_id="pdf/abc123",
+                title="notes.pdf",
+                source_type="pdf",
+                repo=None,
+                file_path=None,
+                commit_hash=None,
+                line_start=None,
+                line_end=None,
+                page_or_section="page 1",
+            )
+        ]
+    )
+
+    assert views[0].url == "/documents/pdf/abc123/file"
+
+
 def test_snippet_truncated_to_240_chars():
     views = merge_citations([_rc("x" * 1000)])
     assert len(views[0].snippet) == 240

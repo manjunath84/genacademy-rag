@@ -26,7 +26,9 @@ consistency domain. Zero new plumbing: `merge_citations` reads what the graph re
 
 Re-clicking flips a verdict instead of stuffing the table. Feedback writes are
 best-effort: a DB failure logs an error and the user still gets their answer,
-same posture as `log_query`.
+same posture as `log_query`. The posted query id must still refer to a usage row
+owned by the current user; forged or stale query ids are rejected before the
+best-effort storage path.
 
 ## HTMX fragment swap instead of PRG for thumbs
 

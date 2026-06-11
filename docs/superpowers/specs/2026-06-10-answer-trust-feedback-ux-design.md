@@ -123,8 +123,9 @@ CREATE TABLE IF NOT EXISTS feedback (
   and lose the rendered answer — answers are not addressable URLs, so fragment swap it is;
   HTMX is already loaded in `chat.html`.)
 - **`POST /feedback`** — requires login + valid CSRF; validates `verdict ∈ {1, -1}` and
-  `query_id` is an int; calls `add_feedback` **best-effort** (log on failure, never 500
-  the user). 303 redirect.
+  `query_id` is an int; the usage row must exist and belong to the current user before feedback is
+  accepted. Calls `add_feedback` **best-effort** for storage failures (log on failure, never 500 the
+  user).
 - **`/ask` view** — threads `log_query`'s returned id into the template context as
   `query_id`. If `log_query` failed (already best-effort), `query_id` is `None` and the
   template hides the thumbs.

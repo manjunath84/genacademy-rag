@@ -343,15 +343,16 @@ def test_log_query_returns_row_id(tmp_path):
 
 def test_feedback_insert_and_summary(tmp_path):
     ds = SQLiteDatastore(tmp_path / "t.sqlite")
-    qid = _log_one(ds)
-    ds.add_feedback(usage_log_id=qid, user_email="a@x.com", verdict=1)
-    ds.add_feedback(usage_log_id=qid, user_email="b@x.com", verdict=-1)
+    qid_a = _log_one(ds, email="a@x.com")
+    qid_b = _log_one(ds, email="b@x.com")
+    ds.add_feedback(usage_log_id=qid_a, user_email="a@x.com", verdict=1)
+    ds.add_feedback(usage_log_id=qid_b, user_email="b@x.com", verdict=-1)
     assert ds.feedback_summary() == {"up": 1, "down": 1}
 
 
 def test_feedback_upsert_flips_verdict_not_duplicates(tmp_path):
     ds = SQLiteDatastore(tmp_path / "t.sqlite")
-    qid = _log_one(ds)
+    qid = _log_one(ds, email="a@x.com")
     ds.add_feedback(usage_log_id=qid, user_email="a@x.com", verdict=1)
     ds.add_feedback(usage_log_id=qid, user_email="a@x.com", verdict=-1)
     assert ds.feedback_summary() == {"up": 0, "down": 1}
@@ -361,15 +362,32 @@ def test_feedback_rejects_bad_verdict(tmp_path):
     import pytest
 
     ds = SQLiteDatastore(tmp_path / "t.sqlite")
-    qid = _log_one(ds)
+    qid = _log_one(ds, email="a@x.com")
     with pytest.raises(ValueError):
         ds.add_feedback(usage_log_id=qid, user_email="a@x.com", verdict=0)
+
+
+def test_feedback_rejects_unknown_query_id(tmp_path):
+    import pytest
+
+    ds = SQLiteDatastore(tmp_path / "t.sqlite")
+    with pytest.raises(LookupError):
+        ds.add_feedback(usage_log_id=404, user_email="a@x.com", verdict=1)
+
+
+def test_feedback_rejects_query_from_another_user(tmp_path):
+    import pytest
+
+    ds = SQLiteDatastore(tmp_path / "t.sqlite")
+    qid = _log_one(ds, email="owner@x.com")
+    with pytest.raises(PermissionError):
+        ds.add_feedback(usage_log_id=qid, user_email="other@x.com", verdict=1)
 
 
 def test_feedback_table_survives_reopen(tmp_path):
     path = tmp_path / "t.sqlite"
     ds = SQLiteDatastore(path)
-    qid = _log_one(ds)
+    qid = _log_one(ds, email="a@x.com")
     ds.add_feedback(usage_log_id=qid, user_email="a@x.com", verdict=1)
     ds2 = SQLiteDatastore(path)
     assert ds2.feedback_summary() == {"up": 1, "down": 0}

@@ -19,7 +19,7 @@ The repository is:
 - A refusal path for unsupported questions.
 - Answer trust controls: confidence badge, copy/retry actions, persisted thumbs feedback, and an AI-mistake disclaimer.
 - Nebius generation through an OpenAI-compatible provider seam.
-- A deterministic retrieval eval with recall@k, precision@k, MRR, faithfulness, and failure analysis.
+- A deterministic retrieval eval with recall@k, precision@k, and MRR, plus LLM-judge faithfulness and failure analysis.
 - A small product layer: login, invite-code signup, admin document management, usage analytics, and admin feedback counts.
 - Docker deployment to Hugging Face Spaces with a live HTTP smoke test.
 

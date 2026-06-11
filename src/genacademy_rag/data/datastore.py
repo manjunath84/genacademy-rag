@@ -76,6 +76,7 @@ class SQLiteDatastore:
         self._lock = threading.RLock()
         self._conn = sqlite3.connect(str(path), check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
+        self._conn.execute("PRAGMA foreign_keys = ON")
         with self._lock:
             self._conn.executescript(SCHEMA)
             self._migrate()
@@ -374,6 +375,14 @@ class SQLiteDatastore:
         if verdict not in (-1, 1):
             raise ValueError("verdict must be -1 or 1")
         with self._lock:
+            usage = self._conn.execute(
+                "SELECT user_email FROM usage_log WHERE id=?",
+                (usage_log_id,),
+            ).fetchone()
+            if usage is None:
+                raise LookupError(f"unknown usage_log_id={usage_log_id}")
+            if usage["user_email"] != user_email:
+                raise PermissionError("feedback user must match usage_log user")
             self._conn.execute(
                 "INSERT INTO feedback(usage_log_id, user_email, verdict) VALUES (?,?,?) "
                 "ON CONFLICT(usage_log_id, user_email) DO UPDATE SET "

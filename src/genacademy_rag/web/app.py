@@ -212,11 +212,13 @@ def create_app(
             return HTMLResponse("Bad verdict", status_code=400)
         try:
             datastore.add_feedback(usage_log_id=query_id, user_email=user, verdict=verdict)
+        except (LookupError, PermissionError):
+            return HTMLResponse("Not found", status_code=404)
         except Exception:
             logger.exception("feedback write failed (query_id=%r)", query_id)
         return HTMLResponse('<span class="text-xs text-slate-500">Thanks for the feedback</span>')
 
-    @app.get("/documents/{doc_id}/file")
+    @app.get("/documents/{doc_id:path}/file")
     def document_file(request: Request, doc_id: str):
         # Members can access originals for chunks they already see as retrieved context.
         if not current_user(request):
