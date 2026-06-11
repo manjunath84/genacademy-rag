@@ -149,13 +149,14 @@ ceiling (handout rule), ~6 s goal.
   source_type plus repo/file_path/commit_hash/line span (GitHub) or page/char span (files), flattened
   into vector metadata and threaded untouched to the answer card and the eval scorer.
 
-## Configuration (all env-driven; `config.py`)
+## Configuration (env-driven; `config.py` — the main knobs, not an exhaustive list)
 
 | Variable | Default | Notes |
 |---|---|---|
 | `GENACADEMY_PROVIDER` | `openrouter` | preset: nebius / openrouter / openai / gemma (local :8085) |
-| `NEBIUS_API_KEY` / `NEBIUS_MODEL` / `NEBIUS_BASE_URL` | — / — / tokenfactory URL | per-preset triples exist for each provider |
-| `GENACADEMY_EMBEDDINGS` | `local` | local (MiniLM 384-dim) or nebius (Qwen3-Embedding-8B) |
+| `NEBIUS_API_KEY` / `NEBIUS_MODEL` / `NEBIUS_BASE_URL` | — / — / tokenfactory URL | each preset has its own `*_API_KEY` / `*_MODEL` / `*_BASE_URL` triple (`OPENROUTER_*`, `OPENAI_*`, `GEMMA_*`) per `PROVIDER_PRESETS` |
+| `GENACADEMY_EMBEDDINGS` | `local` | local (MiniLM 384-dim) or nebius |
+| `NEBIUS_EMBED_MODEL` | `Qwen/Qwen3-Embedding-8B` | only used when `GENACADEMY_EMBEDDINGS=nebius` |
 | `GENACADEMY_EMBED_MODEL` / `GENACADEMY_EMBED_DIM` | `all-MiniLM-L6-v2` / 384 | Pinecone index dim must match |
 | `GENACADEMY_VECTORSTORE` | `chroma` | chroma or pinecone (serving collection only) |
 | `PINECONE_API_KEY`, `GENACADEMY_PINECONE_INDEX/CLOUD/REGION` | — / genacademy-rag / aws / us-east-1 | |
@@ -186,7 +187,7 @@ Routes (all in `web/app.py`; session auth, CSRF token in session compared via
 | GET `/` , POST `/ask` | any logged-in user | chat page; logs to usage_log |
 | POST `/feedback` | logged-in, own query only | HTMX swap; verdict ±1, upsert per (query,user) |
 | GET `/documents/{doc_id}/file` | logged-in | serves uploaded originals (inline PDF) |
-| POST `/upload`, GET `/admin/documents`, POST `/admin/documents/{delete,reindex}` | admin | uploads are PDF; filename sanitized to basename |
+| POST `/upload`, GET `/admin/documents`, POST `/admin/documents/delete`, POST `/admin/documents/reindex` | admin | uploads are PDF; filename sanitized to basename |
 | GET/POST `/admin/invites`, POST `/admin/invites/{id}/revoke` | admin | invite shown once |
 | GET `/admin/dashboard` | admin | usage_summary + feedback counts |
 

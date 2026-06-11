@@ -282,6 +282,9 @@ Against the **live Nebius/Pinecone endpoints and the real corpus**:
 
 ## 11. Deliverables checklist (handout)
 
+*(Historical — written pre-build. Live tracking moved to `specs/roadmap.md` § Cross-phase
+deliverables.)*
+
 - [ ] Working **hybrid-retrieval** cited Q&A bot with refusal path (Phase 0).
 - [ ] 15-question evaluation report (recall/precision/MRR + faithfulness + failure taxonomy).
 - [ ] Demo video ≤5 min (walkthrough + how AI tools were used + live result).
@@ -293,4 +296,5 @@ Against the **live Nebius/Pinecone endpoints and the real corpus**:
 
 ---
 
-*Next: run the §9 spike → `writing-plans` for the phase-by-phase implementation plan.*
+*(This "next step" completed 2026-06-08; the plan was written and executed — see `specs/roadmap.md`
+for shipped state.)*

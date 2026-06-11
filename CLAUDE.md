@@ -5,7 +5,7 @@ Everything there applies to Claude Code with no exceptions.
 
 Quick pointers:
 - **Constitution:** `specs/mission.md` · `specs/tech-stack.md` · `specs/roadmap.md`
-- **Design (under external review):** `docs/design.md`
+- **Design (review incorporated; implemented):** `docs/design.md`
 - **Decision reasoning:** `docs/architecture-decisions.md`
 
 Non-negotiables (full list in `AGENTS.md`):

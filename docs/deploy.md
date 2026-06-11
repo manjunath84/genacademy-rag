@@ -199,7 +199,7 @@ After the smoke test passes, the next task is live login/query testing.
 | --- | --- |
 | `GENACADEMY_PROVIDER` | `nebius` for the mandatory-provider demo, or `openrouter` for dev fallback. |
 | `NEBIUS_BASE_URL` | `https://api.tokenfactory.nebius.com/v1/` |
-| `NEBIUS_MODEL` | The validated generation model used for the demo. |
+| `NEBIUS_MODEL` | `Qwen/Qwen3-30B-A3B-Instruct-2507` (benchmarked: answer latency + JSON grader gate). |
 | `GENACADEMY_DATA_DIR` | `/data` |
 | `GENACADEMY_SECURE_COOKIES` | `true` |
 | `GENACADEMY_VECTORSTORE` | `pinecone` for the live serving corpus. |
@@ -208,6 +208,9 @@ After the smoke test passes, the next task is live login/query testing.
 | `GENACADEMY_PINECONE_REGION` | `us-east-1` |
 | `GENACADEMY_EMBEDDINGS` | `local`; first-boot eval corpus seeding refuses non-local embeddings. |
 | `GENACADEMY_EMBED_DIM` | `384`; must match the Pinecone index dimension for local embeddings. |
+| `GENACADEMY_RERANK_ENABLED` | `true`; the model is baked into the image, so this is safe to enable. |
+| `GENACADEMY_RERANK_POOL` | `20`; validated cap — keeps the recall win, bounds rerank compute. |
+| `GENACADEMY_RERANK_LOCAL_FILES_ONLY` | `true`; never download the rerank model at runtime. |
 
 ## First Boot
 

@@ -24,6 +24,7 @@ In Hugging Face Space settings, confirm:
 ```text
 GENACADEMY_PROVIDER=nebius
 NEBIUS_BASE_URL=https://api.tokenfactory.nebius.com/v1/
+NEBIUS_MODEL=Qwen/Qwen3-30B-A3B-Instruct-2507
 GENACADEMY_VECTORSTORE=pinecone
 GENACADEMY_PINECONE_INDEX=genacademy-rag
 GENACADEMY_EMBEDDINGS=local

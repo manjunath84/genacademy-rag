@@ -112,19 +112,21 @@ Spec: `../docs/superpowers/specs/2026-06-10-answer-trust-feedback-ux-design.md`.
 
 ## Nebius — mandatory call ✅ SATISFIED
 
-The graded eval ran on the **Nebius preset** (`GENACADEMY_PROVIDER=nebius`,
+The graded eval first ran on the **Nebius preset** (`GENACADEMY_PROVIDER=nebius`,
 `meta-llama/Llama-3.3-70B-Instruct`; commit `7c85f81`), and `eval/REPORT.md` carries the
-**model-swap demo** (OpenRouter ↔ Nebius, one env var). Dev default stays OpenRouter; **any
-regenerated eval report — including the Phase-2 rerank before/after — must keep running on the
-Nebius preset**, and the demo video shows the provider swap as a beat.
+**model-swap demo** (OpenRouter ↔ Nebius, one env var). The current `eval/REPORT.md` was
+regenerated 2026-06-11 — still on the Nebius preset — with `Qwen/Qwen3-30B-A3B-Instruct-2507`
+and rerank enabled (pool=20). Dev default stays OpenRouter; **any regenerated eval report must
+keep running on the Nebius preset**, and the demo video shows the provider swap as a beat.
 
 ## Cross-phase deliverables (handout)
 
 - [x] Working hybrid cited Q&A bot with refusal — end of Phase 0. *(shipped; Phase 1 product layer
       merged, PR #2)*
 - [x] 15-question eval report (recall/precision/MRR + faithfulness + taxonomy) — `eval/REPORT.md`,
-      run on Nebius (mandatory call ✅). **Regenerate after the Phase-2 rerank lands** to capture the
-      before/after delta (mission: "measured, not asserted").
+      run on Nebius (mandatory call ✅). Regenerated after the Phase-2 rerank landed (2026-06-11,
+      rerank pool=20); before/after delta captured in `eval/phase2-rerank-delta.md` (mission:
+      "measured, not asserted").
 - [ ] Demo video ≤5 min · GitHub repo link · project doc (overview, datasets, **prompts used while
       building, iterations tried, learnings**, divergences from sample solution) · submit via the
       cohort form.
