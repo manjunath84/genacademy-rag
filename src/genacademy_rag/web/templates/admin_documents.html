@@ -4,20 +4,21 @@
 
 {% block body %}
 <main class="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
-  <section class="mb-7 flex flex-col gap-4 pb-6 md:flex-row md:items-end md:justify-between"
-           style="border-bottom:2px solid var(--ink)">
-    <div>
-      <p class="gc-eyebrow">GenAcademy Compass</p>
-      <h1 class="gc-h1 gc-bar mt-1 text-3xl">Corpus documents</h1>
-      <p class="mt-3 max-w-2xl text-sm leading-6" style="color:var(--mute)">Upload PDFs, re-index the serving corpus, and retire uploaded documents.</p>
+  <header class="mb-8 flex flex-col gap-4 border-b border-[var(--rule)] pb-5 md:flex-row md:items-center md:justify-between">
+    <div class="flex items-center gap-3">
+      <div class="flex h-10 w-10 items-center justify-center rounded-full border border-[var(--rule)] bg-white text-[var(--mineral-text)] font-mono font-bold text-lg shadow-sm">C</div>
+      <div class="space-y-0.5">
+        <h1 class="gc-serif text-2xl font-bold tracking-tight text-[var(--ink)]">Corpus documents</h1>
+        <p class="text-[10px] font-bold tracking-widest text-[var(--mute)] uppercase">GenAcademy Compass</p>
+      </div>
     </div>
-    <nav class="flex flex-wrap gap-2.5 text-sm" aria-label="Admin navigation">
+    <nav class="flex flex-wrap gap-2 text-xs" aria-label="Admin navigation">
       <a class="gc-chip px-3.5 py-2" href="/">Ask</a>
-      <a class="gc-chip gc-chip-current px-3.5 py-2" href="/admin/documents">Documents</a>
+      <a class="gc-chip gc-chip-current px-3.5 py-2" href="/admin/documents">Sources</a>
       <a class="gc-chip px-3.5 py-2" href="/admin/dashboard">Dashboard</a>
       <a class="gc-chip px-3.5 py-2" href="/admin/invites">Invites</a>
     </nav>
-  </section>
+  </header>
 
   <section class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto]">
     <form method="post" action="/upload" enctype="multipart/form-data" class="gc-card p-5">

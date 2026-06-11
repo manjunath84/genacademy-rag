@@ -306,12 +306,16 @@ def test_answer_card_renders_badge_sources_disclaimer(monkeypatch, tmp_path):
     _login(c)
     token = _csrf(c.get("/").text)
     _, page = _ask_and_get_query_id(c, token)
+    assert "Answers that feel calm" not in page
     assert "High confidence" in page
     assert 'href="https://github.com/The-Gen-Academy/r/blob/abc123/README.md#L1-L2"' in page
     assert "RAG retrieves then generates." in page
     assert "it can make mistakes" in page
     assert 'aria-label="Copy answer"' in page
-    assert "retry" in page
+    assert "data-answer-text" in page
+    assert 'name="verdict" value="1"' in page
+    assert 'name="verdict" value="-1"' in page
+    assert "Retry" in page
 
 
 def test_refused_card_has_refusal_badge_no_copy_no_sources(monkeypatch, tmp_path):
@@ -338,7 +342,7 @@ def test_thumbs_hidden_when_log_query_fails(monkeypatch, tmp_path, caplog):
     with caplog.at_level(logging.ERROR):
         qid, page = _ask_and_get_query_id(c, token)
     assert qid is None
-    assert "👍" not in page
+    assert 'name="verdict"' not in page
 
 
 def test_feedback_write_failure_does_not_500(monkeypatch, tmp_path, caplog):
