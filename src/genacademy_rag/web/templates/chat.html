@@ -1,87 +1,134 @@
-<!doctype html><html><head><meta charset="utf-8"><title>GenAcademy RAG</title>
-<script src="https://cdn.tailwindcss.com"></script>
-<script src="https://unpkg.com/htmx.org@1.9.12"></script>
-<script defer src="https://unpkg.com/alpinejs@3.14.1/dist/cdn.min.js"></script>
-<style>[x-cloak]{display:none}</style></head>
-<body class="bg-slate-50 min-h-screen">
-<div class="max-w-2xl mx-auto p-6 space-y-4">
-  <h1 class="text-2xl font-semibold">Ask the cohort materials</h1>
-  <form method="post" action="/ask" class="flex gap-2">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <input name="question" value="{{ question or '' }}" placeholder="What did the course say about…?"
-           class="flex-1 border rounded px-3 py-2">
-    <button class="bg-slate-900 text-white rounded px-4">Ask</button>
-  </form>
+{% extends "base.html" %}
+{% block title %}GenAcademy Compass{% endblock %}
+{% block body %}
+<main class="mx-auto max-w-6xl px-4 py-6 lg:px-8">
+  <section class="mb-6 flex flex-col gap-4 border-b border-slate-200 pb-5 md:flex-row md:items-end md:justify-between">
+    <div class="space-y-2">
+      <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">GenAcademy</p>
+      <h1 class="text-3xl font-semibold tracking-tight">GenAcademy Compass</h1>
+      <p class="max-w-2xl text-sm text-slate-600">Evidence-first answers from the cohort materials.</p>
+    </div>
+    <div class="flex flex-wrap gap-2 text-sm">
+      <a class="rounded-md border border-slate-300 bg-white px-3 py-2 text-slate-700 shadow-sm" href="/admin/documents">Documents</a>
+      <a class="rounded-md border border-slate-300 bg-white px-3 py-2 text-slate-700 shadow-sm" href="/admin/dashboard">Dashboard</a>
+    </div>
+  </section>
 
-  {% if result %}
-  <div class="bg-white rounded-xl shadow p-5 space-y-3" x-data="{copied:false}">
-    <div class="flex items-center justify-between">
-      {% if result.refused %}
-        <span class="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800">● Not in the materials</span>
-      {% else %}
-        <span class="text-xs font-semibold px-2.5 py-0.5 rounded-full
-                     {% if bucket == 'high' %}bg-green-100 text-green-800{% elif bucket == 'medium' %}bg-amber-100 text-amber-800{% else %}bg-slate-200 text-slate-700{% endif %}"
-              title="Reflects the grader's answerability signal ({{ result.confidence }}/5), not a fact-checked probability">
-          ● {{ bucket|capitalize }} confidence</span>
-      {% endif %}
-
-      <div class="flex items-center gap-3 text-sm text-slate-500">
-        {% if not result.refused %}
-        <button type="button" title="Copy answer"
-                @click="navigator.clipboard.writeText($refs.answer.innerText); copied = true; setTimeout(() => copied = false, 1500)">
-          <span x-show="!copied">⧉ copy</span><span x-show="copied" x-cloak>✓ copied</span>
-        </button>
-        {% endif %}
-        <form method="post" action="/ask" class="inline">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-          <input type="hidden" name="question" value="{{ question }}">
-          <button title="Retry this question">↻ retry</button>
-        </form>
-        {% if query_id %}
-        <div id="feedback-box" class="flex gap-2">
-          <form hx-post="/feedback" hx-target="#feedback-box" hx-swap="outerHTML" class="inline">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <input type="hidden" name="query_id" value="{{ query_id }}">
-            <input type="hidden" name="verdict" value="1">
-            <button title="Good answer">👍</button>
-          </form>
-          <form hx-post="/feedback" hx-target="#feedback-box" hx-swap="outerHTML" class="inline">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <input type="hidden" name="query_id" value="{{ query_id }}">
-            <input type="hidden" name="verdict" value="-1">
-            <button title="Bad answer">👎</button>
-          </form>
+  <section class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_18rem]">
+    <div class="space-y-4">
+      <form method="post" action="/ask" class="bg-white border border-slate-200 rounded-lg p-3 shadow-sm">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <div class="flex flex-col gap-3 sm:flex-row">
+          <input name="question" value="{{ question or '' }}" placeholder="Ask about assignments, retrieval, embeddings, evals, or course logistics"
+                 class="min-h-11 flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm">
+          <button class="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white">Ask</button>
         </div>
+      </form>
+
+      <section class="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+        <p class="mb-3 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Ask a suggested question</p>
+        <div class="flex flex-wrap gap-2">
+          {% for suggested in [
+            "What is retrieval augmented generation?",
+            "How should I evaluate a RAG system?",
+            "What did the course say about embeddings?",
+            "When should the assistant refuse to answer?"
+          ] %}
+          <form method="post" action="/ask">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button name="question" value="{{ suggested }}" class="rounded-full border border-slate-300 bg-slate-50 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-100">{{ suggested }}</button>
+          </form>
+          {% endfor %}
+        </div>
+      </section>
+
+      {% if result %}
+      <article class="rounded-lg border border-slate-200 bg-white p-5 shadow-sm space-y-4" x-data="{copied:false}">
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          {% if result.refused %}
+            <span class="inline-flex w-fit items-center rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800">Not in the materials</span>
+          {% else %}
+            <span class="inline-flex w-fit items-center rounded-full px-2.5 py-1 text-xs font-semibold
+                         {% if bucket == 'high' %}bg-green-100 text-green-800{% elif bucket == 'medium' %}bg-amber-100 text-amber-800{% else %}bg-slate-200 text-slate-700{% endif %}"
+                  title="Reflects the grader's answerability signal ({{ result.confidence }}/5), not a fact-checked probability">
+              {{ bucket|capitalize }} confidence
+            </span>
+          {% endif %}
+
+          <div class="flex flex-wrap items-center gap-2 text-sm text-slate-600">
+            {% if not result.refused %}
+            <button type="button" title="Copy answer" aria-label="Copy answer"
+                    class="rounded-md border border-slate-300 px-2.5 py-1 hover:bg-slate-50"
+                    @click="navigator.clipboard.writeText($refs.answer.innerText); copied = true; setTimeout(() => copied = false, 1500)">
+              <span x-show="!copied">copy</span><span x-show="copied" x-cloak>copied</span>
+            </button>
+            {% endif %}
+            <form method="post" action="/ask" class="inline">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <input type="hidden" name="question" value="{{ question }}">
+              <button title="Retry this question" class="rounded-md border border-slate-300 px-2.5 py-1 hover:bg-slate-50">retry</button>
+            </form>
+            {% if query_id %}
+            <div id="feedback-box" class="flex gap-2">
+              <form hx-post="/feedback" hx-target="#feedback-box" hx-swap="outerHTML" class="inline">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <input type="hidden" name="query_id" value="{{ query_id }}">
+                <input type="hidden" name="verdict" value="1">
+                <button title="Good answer" aria-label="Good answer" class="rounded-md border border-slate-300 px-2.5 py-1 hover:bg-slate-50">👍</button>
+              </form>
+              <form hx-post="/feedback" hx-target="#feedback-box" hx-swap="outerHTML" class="inline">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <input type="hidden" name="query_id" value="{{ query_id }}">
+                <input type="hidden" name="verdict" value="-1">
+                <button title="Bad answer" aria-label="Bad answer" class="rounded-md border border-slate-300 px-2.5 py-1 hover:bg-slate-50">👎</button>
+              </form>
+            </div>
+            {% endif %}
+          </div>
+        </div>
+
+        {% if result.refused %}
+          <p class="text-amber-800 font-medium leading-relaxed">{{ result.answer }}</p>
+        {% else %}
+          <p class="whitespace-pre-wrap leading-relaxed text-slate-800" x-ref="answer">{{ result.answer }}</p>
+
+          {% if result.sources %}
+          <section class="border-t border-slate-200 pt-4">
+            <p class="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Sources ({{ result.sources|length }})</p>
+            <div class="space-y-2">
+              {% for s in result.sources %}
+              <details class="rounded-md border border-slate-200 bg-slate-50 text-sm" {% if loop.first %}open{% endif %}>
+                <summary class="cursor-pointer p-3">
+                  {% if s.url %}
+                    <a href="{{ s.url }}" target="_blank" rel="noopener" class="font-medium text-blue-700 underline">{{ s.title }}{% if s.range_label %} · {{ s.range_label }}{% endif %} ↗</a>
+                  {% else %}
+                    <span class="font-medium text-slate-800">{{ s.title }}{% if s.range_label %} · {{ s.range_label }}{% endif %}</span>
+                  {% endif %}
+                  <span class="text-slate-500 text-xs">— {{ s.meta_label }}</span>
+                </summary>
+                <div class="mx-3 mb-3 border-l-2 border-slate-300 bg-white p-3 font-mono text-xs text-slate-600 whitespace-pre-wrap">{{ s.snippet }}</div>
+              </details>
+              {% endfor %}
+            </div>
+          </section>
+          {% endif %}
         {% endif %}
-      </div>
+
+        <p class="border-t border-slate-100 pt-3 text-xs text-slate-500">AI-generated from course materials; it can make mistakes. Check the evidence above.</p>
+      </article>
+      {% endif %}
     </div>
 
-    {% if result.refused %}
-      <p class="text-amber-700 font-medium">{{ result.answer }}</p>
-    {% else %}
-      <p class="whitespace-pre-wrap leading-relaxed" x-ref="answer">{{ result.answer }}</p>
-
-      {% if result.sources %}
-      <div class="pt-2 border-t">
-        <p class="text-xs uppercase tracking-wide text-slate-500 mb-1">Sources ({{ result.sources|length }})</p>
-        {% for s in result.sources %}
-        <details class="text-sm mb-1" {% if loop.first %}open{% endif %}>
-          <summary class="cursor-pointer">
-            {% if s.url %}
-              <a href="{{ s.url }}" target="_blank" rel="noopener" class="text-blue-700 underline">{{ s.title }}{% if s.range_label %} · {{ s.range_label }}{% endif %} ↗</a>
-            {% else %}
-              {{ s.title }}{% if s.range_label %} · {{ s.range_label }}{% endif %}
-            {% endif %}
-            <span class="text-slate-500 text-xs">— {{ s.meta_label }}</span>
-          </summary>
-          <div class="mt-1 ml-4 p-2 bg-slate-50 border-l-2 border-slate-300 text-slate-600 font-mono text-xs whitespace-pre-wrap">{{ s.snippet }}</div>
-        </details>
-        {% endfor %}
+    <aside class="space-y-3 text-sm">
+      <div class="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+        <p class="font-medium text-slate-900">Trust posture</p>
+        <ul class="mt-3 space-y-2 text-slate-600">
+          <li>Cited answers when supported.</li>
+          <li>Honest refusal when materials are insufficient.</li>
+          <li>Evidence stays inspectable in the answer card.</li>
+        </ul>
       </div>
-      {% endif %}
-    {% endif %}
-
-    <p class="text-xs text-slate-400 pt-1">AI-generated from course materials — it can make mistakes. Check the sources above.</p>
-  </div>
-  {% endif %}
-</div></body></html>
+    </aside>
+  </section>
+</main>
+{% endblock %}

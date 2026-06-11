@@ -154,6 +154,23 @@ def test_signup_page_uses_compass_title(monkeypatch, tmp_path):
     assert 'name="csrf_token"' in page.text
 
 
+def test_chat_page_has_compass_workbench_and_question_chips(monkeypatch, tmp_path):
+    c = _client(monkeypatch, tmp_path)
+    _login(c)
+
+    page = c.get("/")
+
+    assert page.status_code == 200
+    assert "GenAcademy Compass" in page.text
+    assert "Evidence-first answers from the cohort materials." in page.text
+    assert "Ask a suggested question" in page.text
+    assert "What is retrieval augmented generation?" in page.text
+    assert "How should I evaluate a RAG system?" in page.text
+    assert "What did the course say about embeddings?" in page.text
+    assert 'name="question"' in page.text
+    assert 'name="csrf_token"' in page.text
+
+
 def test_login_then_ask_renders_cited_answer(monkeypatch, tmp_path):
     c = _client(monkeypatch, tmp_path)
     _login(c)
