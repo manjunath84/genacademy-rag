@@ -1,11 +1,25 @@
-<!doctype html><html><head><meta charset="utf-8"><title>GenAcademy RAG — Login</title>
-<script src="https://cdn.tailwindcss.com"></script></head>
-<body class="bg-slate-50 min-h-screen flex items-center justify-center">
-<form method="post" action="/login" class="bg-white p-8 rounded-xl shadow w-80 space-y-4">
-  <h1 class="text-xl font-semibold">GenAcademy RAG</h1>
-  {% if error %}<p class="text-red-600 text-sm">{{ error }}</p>{% endif %}
-  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-  <input name="email" placeholder="email" class="w-full border rounded px-3 py-2" value="member@genacademy.local">
-  <input name="password" type="password" placeholder="password" class="w-full border rounded px-3 py-2">
-  <button class="w-full bg-slate-900 text-white rounded py-2">Sign in</button>
-</form></body></html>
+{% extends "base.html" %}
+{% block title %}GenAcademy Compass - Login{% endblock %}
+{% block body %}
+<main class="min-h-screen flex items-center justify-center px-4 py-10">
+  <section class="w-full max-w-sm space-y-6">
+    <div class="space-y-2 text-center">
+      <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">GenAcademy</p>
+      <h1 class="text-3xl font-semibold tracking-tight">GenAcademy Compass</h1>
+      <p class="text-sm text-slate-600">Evidence-first answers from the cohort materials.</p>
+    </div>
+    <form method="post" action="/login" class="bg-white border border-slate-200 p-6 rounded-lg shadow-sm space-y-4">
+      {% if error %}<p class="text-red-600 text-sm">{{ error }}</p>{% endif %}
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label class="block text-sm font-medium text-slate-700">Email
+        <input name="email" placeholder="email" class="mt-1 w-full border border-slate-300 rounded-md px-3 py-2" value="member@genacademy.local">
+      </label>
+      <label class="block text-sm font-medium text-slate-700">Password
+        <input name="password" type="password" placeholder="password" class="mt-1 w-full border border-slate-300 rounded-md px-3 py-2">
+      </label>
+      <button class="w-full bg-slate-900 text-white rounded-md py-2 font-medium">Sign in</button>
+      <p class="text-center text-sm text-slate-500"><a class="underline" href="/signup">Create account with invite code</a></p>
+    </form>
+  </section>
+</main>
+{% endblock %}

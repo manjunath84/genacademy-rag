@@ -130,6 +130,30 @@ def test_unauthenticated_chat_redirects_to_login(monkeypatch, tmp_path):
     assert r.status_code in (302, 307) and "/login" in r.headers["location"]
 
 
+def test_login_page_uses_compass_title(monkeypatch, tmp_path):
+    c = _client(monkeypatch, tmp_path)
+
+    page = c.get("/login")
+
+    assert page.status_code == 200
+    assert "<title>GenAcademy Compass" in page.text
+    assert "GenAcademy Compass" in page.text
+    assert "Evidence-first answers from the cohort materials." in page.text
+    assert 'name="csrf_token"' in page.text
+
+
+def test_signup_page_uses_compass_title(monkeypatch, tmp_path):
+    c = _client(monkeypatch, tmp_path)
+
+    page = c.get("/signup")
+
+    assert page.status_code == 200
+    assert "<title>GenAcademy Compass" in page.text
+    assert "Create your Compass account" in page.text
+    assert 'name="code"' in page.text
+    assert 'name="csrf_token"' in page.text
+
+
 def test_login_then_ask_renders_cited_answer(monkeypatch, tmp_path):
     c = _client(monkeypatch, tmp_path)
     _login(c)
