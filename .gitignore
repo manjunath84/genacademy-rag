@@ -30,3 +30,4 @@ eval/runs/
 .idea/
 .vscode/
 *.swp
+.superpowers/

@@ -82,6 +82,30 @@ def _login(client, email="member@genacademy.local", password="member"):
     )
 
 
+def _ask_and_get_query_id(client, token):
+    page = client.post(
+        "/ask",
+        data={"question": "What is RAG?", "csrf_token": token},
+    ).text
+    match = re.search(r'name="query_id" value="(\d+)"', page)
+    return match.group(1) if match else None, page
+
+
+def _store_doc(client, tmp_path, *, doc_id="up1", suffix=".pdf", status="indexed"):
+    stored = tmp_path / f"deck{suffix}"
+    stored.write_bytes(b"%PDF-1.4 fake content")
+    client.app.state.datastore.add_document(
+        doc_id=doc_id,
+        title="Week2 Deck",
+        source_type=suffix.lstrip("."),
+        filename=f"deck{suffix}",
+        uploaded_by="admin@genacademy.local",
+        status=status,
+        stored_path=str(stored),
+    )
+    return stored
+
+
 def _admin_post(client, path: str, *, csrf_token: str | None = None):
     data = {}
     if path == "/admin/invites":
@@ -126,6 +150,184 @@ def test_refusal_is_rendered_not_an_answer(monkeypatch, tmp_path):
         data={"question": "who won the 2050 world cup?", "csrf_token": _csrf(page.text)},
     )
     assert "could not find" in r.text.lower()
+
+
+def test_feedback_requires_login(monkeypatch, tmp_path):
+    c = _client(monkeypatch, tmp_path)
+    r = c.post(
+        "/feedback",
+        data={"query_id": 1, "verdict": 1, "csrf_token": "x"},
+        follow_redirects=False,
+    )
+    assert r.status_code == 303
+    assert r.headers["location"] == "/login"
+
+
+def test_feedback_requires_csrf(monkeypatch, tmp_path):
+    c = _client(monkeypatch, tmp_path)
+    _login(c)
+    r = c.post("/feedback", data={"query_id": 1, "verdict": 1, "csrf_token": "wrong"})
+    assert r.status_code == 403
+
+
+def test_feedback_rejects_bad_verdict(monkeypatch, tmp_path):
+    c = _client(monkeypatch, tmp_path)
+    _login(c)
+    token = _csrf(c.get("/").text)
+    r = c.post("/feedback", data={"query_id": 1, "verdict": 7, "csrf_token": token})
+    assert r.status_code == 400
+
+
+def test_feedback_happy_path_persists_and_returns_fragment(monkeypatch, tmp_path):
+    c = _client(monkeypatch, tmp_path)
+    _login(c)
+    token = _csrf(c.get("/").text)
+    qid, _ = _ask_and_get_query_id(c, token)
+    assert qid is not None
+    r = c.post("/feedback", data={"query_id": qid, "verdict": 1, "csrf_token": token})
+    assert r.status_code == 200
+    assert "Thanks for the feedback" in r.text
+    assert c.app.state.datastore.feedback_summary()["up"] == 1
+
+
+def test_feedback_rejects_unknown_query_id(monkeypatch, tmp_path):
+    c = _client(monkeypatch, tmp_path)
+    _login(c)
+    token = _csrf(c.get("/").text)
+
+    r = c.post("/feedback", data={"query_id": 404, "verdict": 1, "csrf_token": token})
+
+    assert r.status_code == 404
+    assert c.app.state.datastore.feedback_summary() == {"up": 0, "down": 0}
+
+
+def test_feedback_rejects_query_owned_by_another_user(monkeypatch, tmp_path):
+    c = _client(monkeypatch, tmp_path)
+    _login(c)
+    token = _csrf(c.get("/").text)
+    owner_qid, _ = _ask_and_get_query_id(c, token)
+    assert owner_qid is not None
+
+    _login(c, "admin@genacademy.local", "admin")
+    admin_token = _csrf(c.get("/").text)
+    r = c.post(
+        "/feedback",
+        data={"query_id": owner_qid, "verdict": -1, "csrf_token": admin_token},
+    )
+
+    assert r.status_code == 404
+    assert c.app.state.datastore.feedback_summary() == {"up": 0, "down": 0}
+
+
+def test_answer_card_renders_badge_sources_disclaimer(monkeypatch, tmp_path):
+    c = _client(monkeypatch, tmp_path)
+    _login(c)
+    token = _csrf(c.get("/").text)
+    _, page = _ask_and_get_query_id(c, token)
+    assert "High confidence" in page
+    assert 'href="https://github.com/The-Gen-Academy/r/blob/abc123/README.md#L1-L2"' in page
+    assert "RAG retrieves then generates." in page
+    assert "it can make mistakes" in page
+    assert "copy" in page and "retry" in page
+
+
+def test_refused_card_has_refusal_badge_no_copy_no_sources(monkeypatch, tmp_path):
+    c = _client(monkeypatch, tmp_path, refused=True)
+    _login(c)
+    token = _csrf(c.get("/").text)
+    _, page = _ask_and_get_query_id(c, token)
+    assert "Not in the materials" in page
+    assert "Sources" not in page
+    assert "⧉ copy" not in page
+    assert "it can make mistakes" in page
+
+
+def test_thumbs_hidden_when_log_query_fails(monkeypatch, tmp_path, caplog):
+    c = _client(monkeypatch, tmp_path)
+    _login(c)
+    token = _csrf(c.get("/").text)
+    ds = c.app.state.datastore
+
+    def boom(**kwargs):
+        raise RuntimeError("db down")
+
+    ds.log_query = boom
+    with caplog.at_level(logging.ERROR):
+        qid, page = _ask_and_get_query_id(c, token)
+    assert qid is None
+    assert "👍" not in page
+
+
+def test_feedback_write_failure_does_not_500(monkeypatch, tmp_path, caplog):
+    c = _client(monkeypatch, tmp_path)
+    _login(c)
+    token = _csrf(c.get("/").text)
+    ds = c.app.state.datastore
+
+    def boom(**kwargs):
+        raise RuntimeError("db down")
+
+    ds.add_feedback = boom
+    with caplog.at_level(logging.ERROR):
+        r = c.post("/feedback", data={"query_id": 1, "verdict": 1, "csrf_token": token})
+    assert r.status_code == 200
+    assert "feedback write failed" in caplog.text
+
+
+def test_document_file_requires_login(monkeypatch, tmp_path):
+    c = _client(monkeypatch, tmp_path)
+    r = c.get("/documents/up1/file", follow_redirects=False)
+    assert r.status_code == 303
+    assert r.headers["location"] == "/login"
+
+
+def test_document_file_serves_pdf_inline(monkeypatch, tmp_path):
+    c = _client(monkeypatch, tmp_path)
+    _login(c)
+    _store_doc(c, tmp_path, suffix=".pdf")
+    r = c.get("/documents/up1/file")
+    assert r.status_code == 200
+    assert r.headers["content-type"] == "application/pdf"
+    assert "inline" in r.headers["content-disposition"]
+
+
+def test_document_file_serves_upload_with_slash_doc_id(monkeypatch, tmp_path):
+    c = _client(monkeypatch, tmp_path)
+    _login(c)
+    _store_doc(c, tmp_path, doc_id="pdf/abc123", suffix=".pdf")
+
+    r = c.get("/documents/pdf/abc123/file")
+
+    assert r.status_code == 200
+    assert r.headers["content-type"] == "application/pdf"
+
+
+def test_document_file_downloads_pptx(monkeypatch, tmp_path):
+    c = _client(monkeypatch, tmp_path)
+    _login(c)
+    _store_doc(c, tmp_path, doc_id="up2", suffix=".pptx")
+    r = c.get("/documents/up2/file")
+    assert r.status_code == 200
+    assert "attachment" in r.headers["content-disposition"]
+
+
+def test_document_file_404s(monkeypatch, tmp_path):
+    c = _client(monkeypatch, tmp_path)
+    _login(c)
+    assert c.get("/documents/nope/file").status_code == 404
+
+    _store_doc(c, tmp_path, doc_id="dead", status="deleted")
+    assert c.get("/documents/dead/file").status_code == 404
+
+    c.app.state.datastore.add_document(
+        doc_id="gh1",
+        title="README.md",
+        source_type="github",
+        repo="r",
+        file_path="README.md",
+        commit_hash="abc",
+    )
+    assert c.get("/documents/gh1/file").status_code == 404
 
 
 def test_signup_redeems_invite_and_logs_in(monkeypatch, tmp_path):
@@ -1071,6 +1273,25 @@ def test_dashboard_renders_usage_summary(monkeypatch, tmp_path):
     assert "Total queries" in r.text
     assert "What is RAG?" in r.text
     assert "<svg" in r.text
+
+
+def test_dashboard_shows_feedback_counts(monkeypatch, tmp_path):
+    c = _client(monkeypatch, tmp_path)
+    _login(c, "admin@genacademy.local", "admin")
+    ds = c.app.state.datastore
+    qid = ds.log_query(
+        user_email="m@x.com",
+        question="q?",
+        refused=False,
+        confidence=4,
+        used_fallback=False,
+        n_citations=1,
+        latency_ms=50,
+    )
+    ds.add_feedback(usage_log_id=qid, user_email="m@x.com", verdict=1)
+    page = c.get("/admin/dashboard").text
+    assert "Thumbs up" in page
+    assert "Thumbs down" in page
 
 
 def test_phase1_demo_flow(monkeypatch, tmp_path):

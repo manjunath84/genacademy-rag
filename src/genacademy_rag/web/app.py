@@ -13,13 +13,14 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, Request, UploadFile
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
 from genacademy_rag.config import Settings, data_dir_from_env
 from genacademy_rag.core.pipeline import QueryPipeline
 from genacademy_rag.core.security import hash_password
+from genacademy_rag.core.sources import confidence_bucket
 from genacademy_rag.core.types import Chunk
 from genacademy_rag.data.datastore import SQLiteDatastore
 from genacademy_rag.web.auth import authenticate
@@ -178,7 +179,12 @@ def create_app(
         if not current_user(request):
             return RedirectResponse("/login", status_code=302)
         return TEMPLATES.TemplateResponse(
-            request, "chat.html", csrf_context(request, {"result": None, "question": None})
+            request,
+            "chat.html",
+            csrf_context(
+                request,
+                {"result": None, "question": None, "query_id": None, "bucket": None},
+            ),
         )
 
     @app.post("/ask", response_class=HTMLResponse)
@@ -194,8 +200,9 @@ def create_app(
         start = time.perf_counter()
         result = qp.answer(question)
         latency_ms = int((time.perf_counter() - start) * 1000)
+        query_id = None
         try:
-            datastore.log_query(
+            query_id = datastore.log_query(
                 user_email=current_user(request),
                 question=question,
                 refused=result.refused,
@@ -207,8 +214,61 @@ def create_app(
         except Exception:
             logger.exception("usage log_query failed (question=%r)", question)
         return TEMPLATES.TemplateResponse(
-            request, "chat.html", csrf_context(request, {"result": result, "question": question})
+            request,
+            "chat.html",
+            csrf_context(
+                request,
+                {
+                    "result": result,
+                    "question": question,
+                    "query_id": query_id,
+                    "bucket": None if result.refused else confidence_bucket(result.confidence),
+                },
+            ),
         )
+
+    @app.post("/feedback", response_class=HTMLResponse)
+    def feedback(
+        request: Request,
+        query_id: int = Form(...),
+        verdict: int = Form(...),
+        csrf_token_value: str | None = Form(None, alias="csrf_token"),
+    ):
+        user = current_user(request)
+        if not user:
+            return RedirectResponse("/login", status_code=303)
+        if not valid_csrf(request, csrf_token_value):
+            return csrf_forbidden()
+        if verdict not in (1, -1):
+            return HTMLResponse("Bad verdict", status_code=400)
+        try:
+            datastore.add_feedback(usage_log_id=query_id, user_email=user, verdict=verdict)
+        except (LookupError, PermissionError):
+            return HTMLResponse("Not found", status_code=404)
+        except Exception:
+            logger.exception("feedback write failed (query_id=%r)", query_id)
+        return HTMLResponse('<span class="text-xs text-slate-500">Thanks for the feedback</span>')
+
+    @app.get("/documents/{doc_id:path}/file")
+    def document_file(request: Request, doc_id: str):
+        # Members can access originals for chunks they already see as retrieved context.
+        if not current_user(request):
+            return RedirectResponse("/login", status_code=303)
+        doc = datastore.get_document(doc_id)
+        if not doc or doc.get("status") == "deleted" or not doc.get("stored_path"):
+            return HTMLResponse("Not found", status_code=404)
+        path = Path(doc["stored_path"])
+        if not path.exists():
+            return HTMLResponse("Not found", status_code=404)
+        filename = doc.get("filename") or path.name
+        if path.suffix.lower() == ".pdf":
+            return FileResponse(
+                path,
+                media_type="application/pdf",
+                filename=filename,
+                content_disposition_type="inline",
+            )
+        return FileResponse(path, filename=filename)
 
     @app.get("/admin/invites", response_class=HTMLResponse)
     def admin_invites(request: Request):
@@ -323,7 +383,10 @@ def create_app(
         return TEMPLATES.TemplateResponse(
             request,
             "admin_dashboard.html",
-            csrf_context(request, {"summary": summary, "rows": rows}),
+            csrf_context(
+                request,
+                {"summary": summary, "rows": rows, "feedback": datastore.feedback_summary()},
+            ),
         )
 
     @app.post("/admin/documents/delete")

@@ -11,6 +11,20 @@
 | refusal correctness | 0.73 |
 | faithfulness % (LLM-judge) | 58% |
 
+## Answer UX prompt rerun
+
+Regenerated on 2026-06-10 with `GENACADEMY_PROVIDER=nebius` and judge model
+`meta-llama/Llama-3.3-70B-Instruct` after changing the answer prompt from terse
+single-sentence answers to overview paragraph + key-point bullets.
+
+| Run | recall@k | precision@k | MRR | faithfulness |
+|---|---|---|---|---|
+| Before answer-card prompt change | 0.67 | 0.22 | 0.55 | 58% |
+| After answer-card prompt change | 0.67 | 0.22 | 0.55 | 58% |
+
+Faithfulness delta: **0 percentage points**. Retrieval metrics are unchanged, as required; this
+slice did not change retrieval, chunking, grader logic, or the gold set.
+
 ## Per-question
 
 | id | category | recall | precision | mrr | refused | faithful |

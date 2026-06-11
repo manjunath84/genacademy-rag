@@ -46,6 +46,13 @@ CREATE TABLE IF NOT EXISTS usage_log (
     user_email TEXT, question TEXT,
     refused INTEGER, confidence INTEGER, used_fallback INTEGER,
     n_citations INTEGER, latency_ms INTEGER);
+CREATE TABLE IF NOT EXISTS feedback (
+    id INTEGER PRIMARY KEY,
+    usage_log_id INTEGER NOT NULL REFERENCES usage_log(id),
+    user_email TEXT NOT NULL,
+    verdict INTEGER NOT NULL CHECK (verdict IN (-1, 1)),
+    ts TEXT DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (usage_log_id, user_email));
 """
 
 
@@ -59,6 +66,8 @@ class Datastore(Protocol):
     def create_user(self, *, email: str, role: str, password_hash: str) -> dict | None: ...
     def add_document(self, **kwargs) -> None: ...
     def add_chunks_meta(self, chunks: list[Chunk]) -> None: ...
+    def add_feedback(self, *, usage_log_id: int, user_email: str, verdict: int) -> None: ...
+    def feedback_summary(self) -> dict[str, int]: ...
 
 
 class SQLiteDatastore:
@@ -67,6 +76,7 @@ class SQLiteDatastore:
         self._lock = threading.RLock()
         self._conn = sqlite3.connect(str(path), check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
+        self._conn.execute("PRAGMA foreign_keys = ON")
         with self._lock:
             self._conn.executescript(SCHEMA)
             self._migrate()
@@ -335,9 +345,9 @@ class SQLiteDatastore:
         used_fallback: bool,
         n_citations: int,
         latency_ms: int,
-    ) -> None:
+    ) -> int:
         with self._lock:
-            self._conn.execute(
+            cur = self._conn.execute(
                 "INSERT INTO usage_log(user_email, question, refused, confidence, used_fallback, "
                 "n_citations, latency_ms) VALUES (?,?,?,?,?,?,?)",
                 (
@@ -351,6 +361,7 @@ class SQLiteDatastore:
                 ),
             )
             self._conn.commit()
+            return int(cur.lastrowid)
 
     def recent_usage(self, *, limit: int = 500) -> list[dict]:
         with self._lock:
@@ -359,3 +370,31 @@ class SQLiteDatastore:
                 (limit,),
             ).fetchall()
             return [dict(row) for row in rows]
+
+    def add_feedback(self, *, usage_log_id: int, user_email: str, verdict: int) -> None:
+        if verdict not in (-1, 1):
+            raise ValueError("verdict must be -1 or 1")
+        with self._lock:
+            usage = self._conn.execute(
+                "SELECT user_email FROM usage_log WHERE id=?",
+                (usage_log_id,),
+            ).fetchone()
+            if usage is None:
+                raise LookupError(f"unknown usage_log_id={usage_log_id}")
+            if usage["user_email"] != user_email:
+                raise PermissionError("feedback user must match usage_log user")
+            self._conn.execute(
+                "INSERT INTO feedback(usage_log_id, user_email, verdict) VALUES (?,?,?) "
+                "ON CONFLICT(usage_log_id, user_email) DO UPDATE SET "
+                "verdict=excluded.verdict, ts=CURRENT_TIMESTAMP",
+                (usage_log_id, user_email, verdict),
+            )
+            self._conn.commit()
+
+    def feedback_summary(self) -> dict[str, int]:
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT COALESCE(SUM(verdict=1),0) AS up, "
+                "COALESCE(SUM(verdict=-1),0) AS down FROM feedback"
+            ).fetchone()
+            return {"up": int(row["up"]), "down": int(row["down"])}
