@@ -4,7 +4,8 @@
 doc. Deep reasoning behind the locked stack: [`architecture-decisions.md`](architecture-decisions.md).
 Independent review folded in: [`design-review.md`](design-review.md) (Kimchi, 2026-06-07).*
 
-**Date:** 2026-06-07 · **Status:** review incorporated → **plan-ready pending the §9 spike.**
+**Date:** 2026-06-07 · **Status:** review incorporated; spike done (2026-06-08); **implemented —
+Phases 0–2 shipped.** Kept as the design of record; see `docs/project-context.md` for as-built state.
 
 ---
 

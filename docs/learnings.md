@@ -59,6 +59,11 @@ behind seams so improvements can be swapped in one at a time.
    PR #3 improved retrieval from recall@k 0.67 to 0.79, precision@k 0.22 to 0.25, and MRR 0.55 to
    0.58. The cost was material: CPU-pinned p95 retrieval latency rose from about 286 ms to 886 ms in
    the committed run. That makes default-off the right posture.
+   *Update 2026-06-11:* the posture flipped once the actual blocker was fixed. Baking the
+   cross-encoder into the Docker image (PR #16) plus capping the pool (`GENACADEMY_RERANK_POOL=20`)
+   kept the full recall win at lower latency, and rerank now ships **enabled** in the live Space.
+   The config default stays `false` (deterministic local/eval baseline), with the env var as the
+   no-rebuild kill switch.
 
 5. **Chunking is still the next quality lever.**
    The current eval failures repeatedly point at table rows, section headers, and answers split across
@@ -236,9 +241,10 @@ behind seams so improvements can be swapped in one at a time.
    reason than the one that motivated it.
 
 2. **Itemize the latency budget before swapping components.**
-   A request is embed (~12 ms) + retrieval (286 ms, or 886 ms with rerank) + grader LLM call
-   (~0.5–1 s) + answer LLM call (~0.5–4 s). The two LLM calls dominate and vary the most; that is
-   where freed budget comes from. Optimizing the wrong stage looks productive and changes nothing.
+   A request is embed (~12 ms) + retrieval (hundreds of ms; rerank multiplies it — see
+   `eval/phase2-rerank-delta.md` for the measured runs) + grader LLM call (~0.5–1 s) + answer LLM
+   call (~0.5–4 s). The two LLM calls dominate and vary the most; that is where freed budget comes
+   from. Optimizing the wrong stage looks productive and changes nothing.
 
 3. **Locally measured latency does not transfer to deploy hardware.**
    The committed 886 ms rerank p95 was measured on a development machine; the Space CPU is weaker

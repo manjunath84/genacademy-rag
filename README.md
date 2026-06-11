@@ -25,6 +25,8 @@ the GenAcademy RAG name.
   feedback.
 - Phase 2 presets for Pinecone, Nebius embeddings, rerank, section-aware chunking, and Docker/Hugging
   Face Space deployment.
+- Cross-encoder rerank enabled in the live Space (`GENACADEMY_RERANK_POOL=20`); the rerank model is
+  baked into the Docker image.
 
 See `docs/minimal-system-design.md` for the current scale posture: keep this project
 scale-aware, not scale-overbuilt. SQLite remains acceptable for the course demo; Postgres is deferred
@@ -42,8 +44,12 @@ uv run uvicorn genacademy_rag.web.main:app --host 0.0.0.0 --port 7860
 ```bash
 uv run ruff check .
 uv run pytest
-GENACADEMY_RERANK_ENABLED=false GENACADEMY_EMBEDDINGS=local uv run python scripts/eval_retrieval.py --collection eval
+uv run python scripts/provision_rerank_model.py   # one-time local rerank-model download
+GENACADEMY_RERANK_ENABLED=true GENACADEMY_RERANK_POOL=20 GENACADEMY_EMBEDDINGS=local uv run python scripts/eval_retrieval.py --collection eval
 ```
+
+This reproduces the committed `eval/REPORT.md` retrieval numbers (recall@k 0.79). For the
+rerank-off baseline (0.67), drop the rerank env vars.
 
 ## Deploy
 

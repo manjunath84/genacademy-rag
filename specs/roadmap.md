@@ -1,9 +1,11 @@
 # Roadmap
 
 *Canonical. Phases + **MUST vs SHOULD** + risk caps. Read before expanding scope. Status: review
-incorporated (Kimchi, 2026-06-07); spike complete (2026-06-08). **Phase 0 and Phase 1 shipped**
-(PR #2 merged); Phase 2 rerank slice in implementation (design + independent review done). A **demoable
-skeleton exists at the end of every phase.***
+incorporated (Kimchi, 2026-06-07); spike complete (2026-06-08). **Phases 0–2 shipped** — graded
+spine + eval, product layer (RBAC/invites/uploads/dashboard), rerank (enabled live, pool=20),
+Pinecone serving store, section-chunking experiment (negative result, fixed stays default),
+Compass UI, Docker HF Space deploy (rerank live as of 2026-06-11). A **demoable skeleton exists at
+the end of every phase.***
 
 ## Guiding rule
 
