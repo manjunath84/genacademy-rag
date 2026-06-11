@@ -309,13 +309,21 @@ def test_answer_card_renders_badge_sources_disclaimer(monkeypatch, tmp_path):
     assert "Answers that feel calm" not in page
     assert "High confidence" in page
     assert 'href="https://github.com/The-Gen-Academy/r/blob/abc123/README.md#L1-L2"' in page
+    assert "README.md &middot; lines 1–2" in page
     assert "RAG retrieves then generates." in page
     assert "it can make mistakes" in page
+    assert "Trust Status" in page
+    assert "Grounding check" in page
+    assert "Refusal score" not in page
     assert 'aria-label="Copy answer"' in page
+    assert 'aria-label="Retry answer"' in page
+    assert 'aria-label="Mark answer helpful"' in page
+    assert 'aria-label="Mark answer not helpful"' in page
     assert "data-answer-text" in page
     assert 'name="verdict" value="1"' in page
     assert 'name="verdict" value="-1"' in page
-    assert "Retry" in page
+    assert ">Good<" not in page
+    assert ">Flag<" not in page
 
 
 def test_refused_card_has_refusal_badge_no_copy_no_sources(monkeypatch, tmp_path):
