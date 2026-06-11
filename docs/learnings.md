@@ -1,11 +1,13 @@
 # GenAcademy RAG - Learnings So Far
 
-**Date:** 2026-06-09
-**Scope:** lessons from Phase 0, Phase 1, and the first Phase 2 slice through PR #3.
+**Date:** 2026-06-11 (originally 2026-06-09)
+**Scope:** lessons from Phase 0, Phase 1, the first Phase 2 slice through PR #3, the deploy and
+answer-trust slices, the Compass house-theme UI slice (PR #14), and the rerank re-enablement
+analysis.
 **Primary sources:** `docs/design.md`, `specs/roadmap.md`,
 `docs/phase0-decisions-and-tradeoffs.md`, `docs/phase1-decisions-and-tradeoffs.md`,
-`docs/phase2-decisions-and-tradeoffs.md`, `eval/REPORT.md`, and
-`eval/phase2-rerank-delta.md`.
+`docs/phase2-decisions-and-tradeoffs.md`, `eval/REPORT.md`, `eval/phase2-rerank-delta.md`, and
+`docs/deploy.md`.
 
 ## Executive Summary
 
@@ -195,6 +197,63 @@ behind seams so improvements can be swapped in one at a time.
    Decision and tradeoff documents made later sessions faster because they captured not only what was
    built, but why alternatives were rejected.
 
+## Web UI And Templates
+
+1. **Behavioral tests pin contiguous strings, so markup is a constrained surface.**
+   The web tests assert exact substrings like `GenAcademy Compass` and
+   `Evidence-first answers from the cohort materials.` Splitting a pinned phrase with an inline
+   `<mark>` or wrapping a value in `<code>` broke four tests during the theme restyle — even a CSS
+   *comment* containing the word "Sources" tripped the refusal test. Template changes must re-run
+   `tests/web/` before claiming done.
+
+2. **Separate skin from layout to keep template diffs reviewable.**
+   The house theme lives as `gc-*` component classes in one `<style>` block in `base.html`;
+   templates keep Tailwind utilities for layout only. A full visual restyle then touches class
+   lists, not structure, and the pinned-string contracts mostly survive.
+
+3. **Verify rendered output, not source.**
+   Rendering real Jinja templates with sample contexts and screenshotting them headlessly caught
+   visual problems (clipped labels, wrong palette fills) that reading the diff never would. The same
+   loop worked for SVG diagrams, where CSS class fills silently override `fill` attributes.
+
+4. **New server behavior ships with tests in the same slice.**
+   The `/logout` route initially shipped with zero coverage in a suite that tests CSRF exhaustively
+   everywhere else. Independent review caught it; six behavioral tests (session clearing, CSRF
+   rejection, admin revocation, refusal recovery, XSS escaping) closed the gap before merge.
+
+5. **A UI that hardcodes measured numbers will eventually lie.**
+   The trust sidebar bakes in `recall@k 0.67` and `refusal 0.73`. The moment the eval baseline
+   moves, the UI silently misreports it. Measured values shown to users should be injected from the
+   eval output, not typed into templates. (Known follow-up.)
+
+## Deployment And Latency Budgets
+
+1. **Diagnose the actual blocker before designing around an assumed one.**
+   Rerank was believed to be off in the Space "because of latency." The real blocker was that the
+   cross-encoder model is not baked into the Docker image and `LOCAL_FILES_ONLY=true` blocks runtime
+   downloads — a one-line Dockerfile fix. The latency budget (~6.7 s worst case vs an 8 s ceiling)
+   actually fit. The proposed remedy (swap the generation model) was useful, but for a different
+   reason than the one that motivated it.
+
+2. **Itemize the latency budget before swapping components.**
+   A request is embed (~12 ms) + retrieval (286 ms, or 886 ms with rerank) + grader LLM call
+   (~0.5–1 s) + answer LLM call (~0.5–4 s). The two LLM calls dominate and vary the most; that is
+   where freed budget comes from. Optimizing the wrong stage looks productive and changes nothing.
+
+3. **Locally measured latency does not transfer to deploy hardware.**
+   The committed 886 ms rerank p95 was measured on a development machine; the Space CPU is weaker
+   and the figure could be 2–3×. Any latency-sensitive enablement needs a live measurement gate on
+   the target hardware, plus a knob (`GENACADEMY_RERANK_POOL`) to shrink the work if it misses.
+
+4. **An env-var kill switch beats a redeploy as a rollback plan.**
+   `GENACADEMY_RERANK_ENABLED=false` restarts the app without a rebuild. Features that might blow a
+   budget in production should be reversible at config speed, not image-build speed.
+
+5. **Heavy compute inside a lock is a serialization decision, not just a latency one.**
+   Rerank runs inside the corpus lock, so its cost serializes all concurrent asks. Acceptable at
+   cohort traffic, but it should be a documented decision — the lock exists because dense and sparse
+   retrieval are two consistency domains, and moving work out of it would reopen that problem.
+
 ## What Changed Our Mind
 
 1. **Dense-only was too weak for exact-match questions.**
@@ -214,6 +273,12 @@ behind seams so improvements can be swapped in one at a time.
 
 5. **Latency claims need real eval text, not synthetic snippets.**
    Synthetic pair scoring looked cheap, but full 1000-character chunks on CPU made p95 much higher.
+
+6. **"Disabled due to latency" was the wrong story.**
+   Rerank stayed off in the Space because the model was never provisioned into the image, not
+   because the budget was blown. Re-checking the original reason before planning the fix changed
+   the plan from "swap providers to afford rerank" to "bake the model in, cap the pool, and measure
+   on the Space" — with the model swap kept as a quality/headroom improvement, not a prerequisite.
 
 ## Next Best Learning Target
 
