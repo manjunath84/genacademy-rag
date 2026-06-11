@@ -42,6 +42,7 @@
     </div>
   </header>
 
+  {% if question is none %}
   <div class="mb-10 grid gap-6 md:grid-cols-[1fr_22rem] items-center">
     <div class="space-y-3">
       <h2 class="gc-serif text-5xl md:text-7xl font-normal leading-[0.95] tracking-tight text-[var(--ink)]">
@@ -66,6 +67,7 @@
       </div>
     </div>
   </div>
+  {% endif %}
 
   <section class="grid min-w-0 gap-7 lg:grid-cols-[18rem_1fr_18rem] items-start">
     <aside class="order-3 min-w-0 lg:order-1 space-y-4">

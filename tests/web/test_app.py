@@ -306,6 +306,7 @@ def test_answer_card_renders_badge_sources_disclaimer(monkeypatch, tmp_path):
     _login(c)
     token = _csrf(c.get("/").text)
     _, page = _ask_and_get_query_id(c, token)
+    assert "Answers that feel calm" not in page
     assert "High confidence" in page
     assert 'href="https://github.com/The-Gen-Academy/r/blob/abc123/README.md#L1-L2"' in page
     assert "RAG retrieves then generates." in page
