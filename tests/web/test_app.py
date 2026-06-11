@@ -737,10 +737,58 @@ def test_delete_route_filters_deleted_doc_from_snapshot(monkeypatch, tmp_path):
     assert store_reads == []           # snapshot-based: no remote read on delete
 
 
+def test_serving_chunk_filter_drops_orphaned_uploads_but_keeps_github_seed(tmp_path):
+    from genacademy_rag.core.types import Chunk, Citation
+    from genacademy_rag.data.datastore import SQLiteDatastore
+    from genacademy_rag.web.app import _filter_serving_chunks_for_datastore
+
+    ds = SQLiteDatastore(tmp_path / "t.sqlite")
+    ds.add_document(
+        doc_id="pdf/live",
+        title="live.pdf",
+        source_type="pdf",
+        filename="live.pdf",
+        uploaded_by="admin@genacademy.local",
+        n_chunks=1,
+    )
+    ds.add_document(
+        doc_id="pdf/deleted",
+        title="deleted.pdf",
+        source_type="pdf",
+        filename="deleted.pdf",
+        uploaded_by="admin@genacademy.local",
+        n_chunks=1,
+    )
+    ds.delete_document("pdf/deleted", deleted_by="admin@genacademy.local")
+
+    def chunk(doc_id: str, source_type: str, repo: str | None = None) -> Chunk:
+        cit = Citation(
+            doc_id=doc_id,
+            title=doc_id,
+            source_type=source_type,
+            repo=repo,
+            file_path="README.md" if repo else None,
+            commit_hash="abc123" if repo else None,
+        )
+        return Chunk(chunk_id=f"{doc_id}::0", doc_id=doc_id, ordinal=0, text="t", citation=cit)
+
+    visible = _filter_serving_chunks_for_datastore(
+        [
+            chunk("course/seed", "github", repo="r"),
+            chunk("pdf/live", "pdf"),
+            chunk("pdf/deleted", "pdf"),
+            chunk("pdf/orphan", "pdf"),
+        ],
+        ds,
+    )
+
+    assert [c.chunk_id for c in visible] == ["course/seed::0", "pdf/live::0"]
+
+
 def test_reindex_route_filters_deleted_docs_via_datastore_ledger(monkeypatch, tmp_path):
-    """Reindex is the one deliberate remote re-read. Orphaned vectors from a lagged
-    delete (still returned by get_all_chunks) must not resurrect a deleted doc —
-    the datastore's deletion ledger is authoritative."""
+    """Reindex is the one deliberate remote re-read. Pinecone may retain old uploaded
+    vectors across an HF restart after SQLite/upload files are wiped; keep GitHub seed
+    chunks but do not resurrect deleted or orphaned uploaded docs."""
     from genacademy_rag.core.types import Chunk, Citation
     from genacademy_rag.data.datastore import SQLiteDatastore
     from genacademy_rag.web.app import create_app
@@ -750,8 +798,15 @@ def test_reindex_route_filters_deleted_docs_via_datastore_ledger(monkeypatch, tm
     datastore = SQLiteDatastore(tmp_path / "t.sqlite")
     rebuilt = []
 
-    def _chunk(doc_id, ordinal):
-        cit = Citation(doc_id=doc_id, title=doc_id, source_type="pdf")
+    def _chunk(doc_id, ordinal, *, source_type="pdf", repo=None):
+        cit = Citation(
+            doc_id=doc_id,
+            title=doc_id,
+            source_type=source_type,
+            repo=repo,
+            file_path="README.md" if repo else None,
+            commit_hash="abc123" if repo else None,
+        )
         return Chunk(chunk_id=f"{doc_id}::{ordinal}", doc_id=doc_id, ordinal=ordinal,
                      text="t", citation=cit)
 
@@ -768,8 +823,14 @@ def test_reindex_route_filters_deleted_docs_via_datastore_ledger(monkeypatch, tm
     class _OrphanedServing:
         def get_all_chunks(self):
             # Remote still holds the deleted doc's vectors (lagged delete) plus a
-            # live doc and an eval-seed doc that has no datastore row.
-            return [_chunk("pdf/gone", 0), _chunk("pdf/live", 0), _chunk("course/seed", 0)]
+            # live doc, a ledger-less GitHub eval seed, and an uploaded orphan left
+            # behind by an HF /data reset.
+            return [
+                _chunk("pdf/gone", 0),
+                _chunk("pdf/live", 0),
+                _chunk("course/seed", 0, source_type="github", repo="r"),
+                _chunk("pdf/orphan", 0),
+            ]
 
     for doc_id, title in (("pdf/gone", "gone.pdf"), ("pdf/live", "live.pdf")):
         datastore.add_document(
@@ -792,7 +853,7 @@ def test_reindex_route_filters_deleted_docs_via_datastore_ledger(monkeypatch, tm
                follow_redirects=False)
 
     assert r.status_code == 303
-    # Deleted doc filtered; live doc and ledger-less seed doc kept.
+    # Deleted and orphaned uploads filtered; live doc and ledger-less GitHub seed kept.
     assert [ch.chunk_id for ch in rebuilt[0]] == ["pdf/live::0", "course/seed::0"]
 
 

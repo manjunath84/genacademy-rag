@@ -37,6 +37,7 @@ Add these as **Secrets**:
 ```text
 GENACADEMY_SESSION_SECRET=<generated-secret>
 NEBIUS_API_KEY=<your-nebius-api-key>
+PINECONE_API_KEY=<your-pinecone-api-key>
 ```
 
 Generate the session secret locally:
@@ -57,13 +58,21 @@ NEBIUS_BASE_URL=https://api.tokenfactory.nebius.com/v1/
 NEBIUS_MODEL=<your-validated-nebius-model>
 GENACADEMY_DATA_DIR=/data
 GENACADEMY_SECURE_COOKIES=true
-GENACADEMY_VECTORSTORE=chroma
+GENACADEMY_VECTORSTORE=pinecone
+GENACADEMY_PINECONE_INDEX=genacademy-rag
+GENACADEMY_PINECONE_CLOUD=aws
+GENACADEMY_PINECONE_REGION=us-east-1
 GENACADEMY_EMBEDDINGS=local
+GENACADEMY_EMBED_DIM=384
 GENACADEMY_RERANK_ENABLED=false
 ```
 
-Use the same `NEBIUS_MODEL` you validated locally or were given for the course. Do not set
-`GENACADEMY_VECTORSTORE=pinecone` for the first deployment; keep the first deploy simple with Chroma.
+Use the same `NEBIUS_MODEL` you validated locally or were given for the course.
+
+With these settings, the live **serving** corpus uses Pinecone. The deterministic eval bootstrap
+still uses local Chroma under `/data/chroma` so retrieval eval behavior stays independent of the
+remote vector store. Keep `GENACADEMY_EMBEDDINGS=local` and `GENACADEMY_EMBED_DIM=384` unless you are
+creating a fresh Pinecone index and re-ingesting with a matching-dimension embedder.
 
 ### 4. Push Code To The Space
 
@@ -122,6 +131,7 @@ Expected signs:
 ```text
 deploy bootstrap: seeding eval collection
 ingested 4 docs -> 53 chunks into /data/chroma collection=eval
+boot corpus: 53 chunks from pinecone serving store
 Uvicorn running on http://0.0.0.0:7860
 ```
 
@@ -148,14 +158,10 @@ Expected:
 HTTP SMOKE OK  base_url=https://...
 ```
 
-Confirmed live smoke for this Space on 2026-06-10:
+For this Space, run:
 
 ```bash
 uv run python scripts/smoke_http.py --base-url https://Manjunath84-genacademy-rag.hf.space
-```
-
-```text
-HTTP SMOKE OK  base_url=https://Manjunath84-genacademy-rag.hf.space
 ```
 
 The documented Nebius Token Factory URL includes a trailing slash. With the pinned OpenAI SDK, that
@@ -165,9 +171,14 @@ base URL resolves chat completions as `https://api.tokenfactory.nebius.com/v1/ch
 
 - `GENACADEMY_SESSION_SECRET` error: add the secret in Space settings and restart/rebuild.
 - Nebius auth/model error: check `NEBIUS_API_KEY` and `NEBIUS_MODEL`.
+- Pinecone auth/index error: check `PINECONE_API_KEY`, `GENACADEMY_PINECONE_INDEX`,
+  `GENACADEMY_PINECONE_CLOUD`, and `GENACADEMY_PINECONE_REGION`.
+- Pinecone dimension error: the default local embedder is 384-dimensional, so the Pinecone index
+  must be dimension `384`. Use a fresh index if you change the embedder or `GENACADEMY_EMBED_DIM`.
 - App keeps rebuilding slowly: normal for the first Docker build.
 - Data disappears after restart: expected without persistent storage; the app re-seeds the eval
-  corpus on boot.
+  corpus on boot. Pinecone serving vectors persist outside `/data`, but uploaded-document rows/files
+  in SQLite do not; the app filters uploaded vectors that no longer have a live SQLite document row.
 
 After the smoke test passes, the next task is live login/query testing.
 
@@ -177,7 +188,7 @@ After the smoke test passes, the next task is live login/query testing.
 | --- | --- |
 | `GENACADEMY_SESSION_SECRET` | Stable signed-session secret. Use a long random value. |
 | `NEBIUS_API_KEY` | Generation key when `GENACADEMY_PROVIDER=nebius`. |
-| `PINECONE_API_KEY` | Required only when `GENACADEMY_VECTORSTORE=pinecone`. |
+| `PINECONE_API_KEY` | Pinecone key for the live serving vector store. |
 
 ## Recommended Space Variables
 
@@ -188,8 +199,12 @@ After the smoke test passes, the next task is live login/query testing.
 | `NEBIUS_MODEL` | The validated generation model used for the demo. |
 | `GENACADEMY_DATA_DIR` | `/data` |
 | `GENACADEMY_SECURE_COOKIES` | `true` |
-| `GENACADEMY_VECTORSTORE` | `chroma` for the first deploy slice. |
+| `GENACADEMY_VECTORSTORE` | `pinecone` for the live serving corpus. |
+| `GENACADEMY_PINECONE_INDEX` | `genacademy-rag` |
+| `GENACADEMY_PINECONE_CLOUD` | `aws` |
+| `GENACADEMY_PINECONE_REGION` | `us-east-1` |
 | `GENACADEMY_EMBEDDINGS` | `local`; first-boot eval corpus seeding refuses non-local embeddings. |
+| `GENACADEMY_EMBED_DIM` | `384`; must match the Pinecone index dimension for local embeddings. |
 
 ## First Boot
 
@@ -222,6 +237,24 @@ does not strip inline comments after values.
 Values in `--env-file .env` override Dockerfile defaults such as `GENACADEMY_DATA_DIR=/data` and
 `GENACADEMY_SECURE_COOKIES=true`. For a local browser login over plain HTTP, override secure cookies
 to `false`; for a Space-like local smoke, keep `GENACADEMY_DATA_DIR=/data`.
+
+## Pinecone Smoke
+
+Before switching or rebuilding the Space with `GENACADEMY_VECTORSTORE=pinecone`, run the live
+Pinecone smoke locally with secrets loaded from `.env`:
+
+```bash
+set -a && source .env && set +a && uv run python scripts/smoke_pinecone.py
+```
+
+Expected:
+
+```text
+PINECONE SMOKE OK  index=genacademy-rag namespace=smoke-test ...
+```
+
+The script may create the configured index if it does not exist. It writes two vectors into the
+throwaway `smoke-test` namespace and deletes that smoke document in a `finally` block.
 
 ## Live Space Smoke
 
@@ -397,10 +430,12 @@ If no storage bucket / persistent storage is attached, these live-test side effe
 - invite codes
 - new signed-up users
 - usage rows
-- Chroma collections under `/data`
+- local Chroma eval collections under `/data`
 
-The Space still works after restart because bootstrapping re-seeds the eval corpus, but admin-created
-production state is lost.
+The Space still works after restart because bootstrapping re-seeds the eval corpus and the serving
+corpus can be backed by Pinecone. Admin-created production state is still lost unless SQLite/uploads
+are on persistent storage. If old uploaded vectors remain in Pinecone after `/data` is wiped, the app
+filters them out because there is no live SQLite document row for those uploads.
 
 ## Why Hugging Face Spaces
 
@@ -411,6 +446,8 @@ public, reproducible ML demo:
 - It can run the same Docker image and FastAPI app used locally, with no special Gradio rewrite.
 - It has built-in Git-based deploys, logs, variables, and secrets.
 - It sits close to the ML ecosystem and handles the local embedding-model download/cache path cleanly.
+- It can use Pinecone as the serving vector store while keeping the eval bootstrap local and
+  deterministic.
 - The free CPU path is enough for this Week 2 slice because generation is delegated to Nebius and
   embeddings are local/small.
 
@@ -439,10 +476,14 @@ HTTP.
 ## Known Restrictions
 
 - `/data` persists only when the Space has persistent storage attached. Without persistent storage,
-  SQLite users, invites, usage logs, uploads, and the Chroma collection are lost on each restart; the
-  bootstrap re-fetches and re-embeds the corpus on every cold boot.
-- Keep uvicorn single-worker. The app holds an in-process retriever snapshot, and Chroma/SQLite are
-  not a multi-process serving target in this slice.
+  SQLite users, invites, usage logs, uploads, and the local Chroma eval collection are lost on each
+  restart; the bootstrap re-fetches and re-embeds the eval corpus on every cold boot.
+- Pinecone persists outside `/data`. That is useful for the serving corpus, but uploaded-document
+  vectors can outlive SQLite/upload-file rows after an HF restart. The app filters orphaned uploaded
+  chunks at boot/reindex; use a fresh Pinecone index or clear the `serving` namespace if you want a
+  completely clean remote serving store.
+- Keep uvicorn single-worker. The app holds an in-process retriever snapshot, and SQLite plus the
+  in-memory BM25 corpus are not a multi-process serving target in this slice.
 - The offline embedding model is baked into the Docker image under `HF_HOME=/app/.cache/huggingface`.
   Rebuild the image when changing `GENACADEMY_EMBED_MODEL`.
 - The rerank model is not baked into this Docker image. Leave `GENACADEMY_RERANK_ENABLED=false`

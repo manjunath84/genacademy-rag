@@ -19,6 +19,7 @@ The repository is:
 - A refusal path for unsupported questions.
 - Answer trust controls: confidence badge, copy/retry actions, persisted thumbs feedback, and an AI-mistake disclaimer.
 - Nebius generation through an OpenAI-compatible provider seam.
+- Pinecone serving vector store with local Chroma kept for deterministic eval bootstrap.
 - A deterministic retrieval eval with recall@k, precision@k, and MRR, plus LLM-judge faithfulness and failure analysis.
 - A small product layer: login, invite-code signup, admin document management, usage analytics, and admin feedback counts.
 - Docker deployment to Hugging Face Spaces with a live HTTP smoke test.
@@ -55,7 +56,7 @@ The project keeps the core logic separate from the web and deploy layers:
 The main extension seams are:
 
 - provider preset: OpenRouter, OpenAI, Nebius, local Gemma-compatible endpoint
-- vector store: Chroma by default, Pinecone preset available
+- vector store: Pinecone for the live serving corpus; Chroma remains the local/default eval store
 - embeddings: local `sentence-transformers` by default, Nebius embeddings preset available
 - chunker: fixed baseline plus section-aware chunking work
 
@@ -163,7 +164,7 @@ All prompts in this section are **reconstructed** — they are faithful paraphra
    Added reranking and section-aware chunking as measured retrieval-quality experiments while keeping deterministic eval defaults stable.
 
 4. **Deploy slice**
-   Added Docker packaging, Hugging Face Space startup, first-boot corpus seeding, secure-cookie settings, and HTTP smoke checks.
+   Added Docker packaging, Hugging Face Space startup, first-boot corpus seeding, Pinecone serving-store configuration, secure-cookie settings, and HTTP smoke checks.
 
 5. **Live validation**
    Deployed to Hugging Face Spaces, passed the live smoke check, verified a cited answer, and verified refusal on an unsupported question.
@@ -195,7 +196,8 @@ This project intentionally diverges from the handout sample solution:
 ## Current Limitations
 
 - Hugging Face `/data` is ephemeral unless paid persistent storage is attached, so users/uploads/usage reset on restart.
-- The first deployment uses Chroma, not Pinecone, to keep the live demo simple.
+- Pinecone serving vectors persist outside `/data`; uploaded-document vectors are filtered if the
+  matching SQLite document row disappears after a restart.
 - Rerank is disabled in the Space because the rerank model is not baked into the Docker image.
 - The live HTTP smoke proves boot and login-page rendering; browser testing is still needed after each deploy for actual query and answer-card behavior.
 
@@ -208,4 +210,4 @@ Use these links in the cohort form:
 
 Suggested short description:
 
-> GenAcademy RAG is a course-material assistant that answers with clickable, line-level citations and refuses unsupported questions. It uses hybrid retrieval, a pinned eval corpus, Nebius generation, answer-confidence/feedback UX, admin document management, and a Docker Hugging Face Space deployment. The project is scale-ready by seams and evaluation discipline, not overbuilt with premature distributed infrastructure.
+> GenAcademy RAG is a course-material assistant that answers with clickable, line-level citations and refuses unsupported questions. It uses hybrid retrieval, a pinned eval corpus, Nebius generation, Pinecone serving vectors, answer-confidence/feedback UX, admin document management, and a Docker Hugging Face Space deployment. The project is scale-ready by seams and evaluation discipline, not overbuilt with premature distributed infrastructure.
