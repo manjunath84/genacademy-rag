@@ -109,7 +109,8 @@
       <rect x="908" y="0" width="250" height="126" rx="14" fill="#ffffff" stroke="#cbd5e1"/>
       <text x="1033" y="34" text-anchor="middle" class="label">Generate</text>
       <text x="1033" y="66" text-anchor="middle" class="metricSmall">Provider seam</text>
-      <text x="1033" y="96" text-anchor="middle" class="small">Nebius · Qwen3-30B-A3B</text>
+      <text x="1033" y="92" text-anchor="middle" class="small">Nebius preset</text>
+      <text x="1033" y="112" text-anchor="middle" class="small">Qwen/Qwen3-30B-A3B-Instruct-2507</text>
       <path class="line" d="M 1166 63 H 1206"/>
 
       <rect x="1214" y="0" width="340" height="126" rx="14" fill="#ffffff" stroke="#cbd5e1"/>
