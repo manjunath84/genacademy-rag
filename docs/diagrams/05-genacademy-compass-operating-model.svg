@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1800" height="2150" viewBox="0 0 1800 2150" role="img" aria-labelledby="title desc">
   <title id="title">GenAcademy Compass Operating Model Infographic</title>
-  <desc id="desc">A five-chapter infographic summarizing the GenAcademy Compass user experience and GenAcademy RAG architecture: the query spine ending in a cited answer or honest refusal, the two-tier corpus policy, eval results and default-off experiments, config seams and Hugging Face Space deployment, and the guardrails and scale posture.</desc>
+  <desc id="desc">A five-chapter infographic summarizing the GenAcademy Compass user experience and GenAcademy RAG architecture: the query spine ending in a cited answer or honest refusal, the two-tier corpus policy, eval results and experiment outcomes (rerank live in the Space, section chunking kept off), config seams and Hugging Face Space deployment, and the guardrails and scale posture.</desc>
   <defs>
     <linearGradient id="page" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#ffffff"/>
@@ -73,8 +73,8 @@
   </g>
   <g class="font" transform="translate(1280 50)" filter="url(#shadow)">
     <path d="M 0 0 H 400 L 450 50 L 400 100 H 0 L 40 50 Z" fill="#ffffff" stroke="#94a3b8" stroke-width="2"/>
-    <text x="64" y="38" class="label">Phase 2 posture</text>
-    <text x="64" y="72" class="metricSmall">Preset swaps shipped</text>
+    <text x="64" y="38" class="label">Live posture</text>
+    <text x="64" y="72" class="metricSmall">Rerank ON · pool 20</text>
   </g>
 
   <!-- ============ Chapter 1: query spine (hero) ============ -->
@@ -94,8 +94,9 @@
 
       <rect x="296" y="0" width="250" height="126" rx="14" fill="#ffffff" stroke="#cbd5e1"/>
       <text x="421" y="34" text-anchor="middle" class="label">Retrieve</text>
-      <text x="421" y="66" text-anchor="middle" class="metricSmall">Vector + BM25</text>
-      <text x="421" y="96" text-anchor="middle" class="small">RRF fusion · top-k 5</text>
+      <text x="421" y="66" text-anchor="middle" class="metricSmall">Hybrid + rerank</text>
+      <text x="421" y="92" text-anchor="middle" class="small">BM25 + dense → RRF fuse</text>
+      <text x="421" y="112" text-anchor="middle" class="small">cross-encoder · pool 20 → top-k 5</text>
       <path class="line" d="M 554 63 H 594"/>
 
       <rect x="602" y="0" width="250" height="126" rx="14" fill="#ffffff" stroke="#cbd5e1"/>
@@ -108,7 +109,7 @@
       <rect x="908" y="0" width="250" height="126" rx="14" fill="#ffffff" stroke="#cbd5e1"/>
       <text x="1033" y="34" text-anchor="middle" class="label">Generate</text>
       <text x="1033" y="66" text-anchor="middle" class="metricSmall">Provider seam</text>
-      <text x="1033" y="96" text-anchor="middle" class="small">Nebius — mandatory call</text>
+      <text x="1033" y="96" text-anchor="middle" class="small">Nebius · Qwen3-30B-A3B</text>
       <path class="line" d="M 1166 63 H 1206"/>
 
       <rect x="1214" y="0" width="340" height="126" rx="14" fill="#ffffff" stroke="#cbd5e1"/>
@@ -170,39 +171,42 @@
     <text x="88" y="88" class="headline">Eval is the release gate</text>
 
     <g transform="translate(40 120)">
-      <rect class="plain" width="130" height="88" rx="12"/>
-      <text x="65" y="38" text-anchor="middle" class="metric">0.67</text>
-      <text x="65" y="66" text-anchor="middle" class="small">recall@k</text>
-      <rect class="plain" x="146" width="130" height="88" rx="12"/>
-      <text x="211" y="38" text-anchor="middle" class="metric">0.22</text>
-      <text x="211" y="66" text-anchor="middle" class="small">precision@k</text>
-      <rect class="plain" x="292" width="130" height="88" rx="12"/>
-      <text x="357" y="38" text-anchor="middle" class="metric">0.55</text>
-      <text x="357" y="66" text-anchor="middle" class="small">MRR</text>
-      <rect class="plain" x="438" width="130" height="88" rx="12"/>
-      <text x="503" y="38" text-anchor="middle" class="metric">0.73</text>
-      <text x="503" y="66" text-anchor="middle" class="small">refusal corr.</text>
-      <rect class="plain" x="584" width="130" height="88" rx="12"/>
-      <text x="649" y="38" text-anchor="middle" class="metric">58%</text>
-      <text x="649" y="66" text-anchor="middle" class="small">faithful</text>
+      <rect class="plain" width="130" height="104" rx="12"/>
+      <text x="65" y="38" text-anchor="middle" class="metric">0.79</text>
+      <text x="65" y="64" text-anchor="middle" class="small">recall@k</text>
+      <text x="65" y="88" text-anchor="middle" class="small" style="fill:#047857">was 0.67 ▲</text>
+      <rect class="plain" x="146" width="130" height="104" rx="12"/>
+      <text x="211" y="38" text-anchor="middle" class="metric">0.25</text>
+      <text x="211" y="64" text-anchor="middle" class="small">precision@k</text>
+      <text x="211" y="88" text-anchor="middle" class="small" style="fill:#047857">was 0.22 ▲</text>
+      <rect class="plain" x="292" width="130" height="104" rx="12"/>
+      <text x="357" y="38" text-anchor="middle" class="metric">0.58</text>
+      <text x="357" y="64" text-anchor="middle" class="small">MRR</text>
+      <text x="357" y="88" text-anchor="middle" class="small" style="fill:#047857">was 0.55 ▲</text>
+      <rect class="plain" x="438" width="130" height="104" rx="12"/>
+      <text x="503" y="38" text-anchor="middle" class="metric">1.00*</text>
+      <text x="503" y="64" text-anchor="middle" class="small">refusal corr.</text>
+      <rect class="plain" x="584" width="130" height="104" rx="12"/>
+      <text x="649" y="38" text-anchor="middle" class="metric">100%*</text>
+      <text x="649" y="64" text-anchor="middle" class="small">faithful</text>
     </g>
-    <text x="40" y="246" class="body">15 gold questions: 12 retrieval-scored + 3 unanswerable.</text>
-    <text x="40" y="274" class="small">Deterministic metrics; the LLM judge scores only faithfulness.</text>
-    <path d="M 40 300 H 770" stroke="#cbd5e1" stroke-width="2" stroke-dasharray="6 8"/>
+    <text x="40" y="250" class="body">15 gold questions: 12 retrieval-scored + 3 unanswerable.</text>
+    <text x="40" y="278" class="small">*Qwen3-30B is both generator and judge — refusal and faithfulness gains aren't attributable to rerank.</text>
+    <path d="M 40 302 H 770" stroke="#cbd5e1" stroke-width="2" stroke-dasharray="6 8"/>
 
     <text x="40" y="334" class="label">Experiments — measured, then decided</text>
-    <text x="40" y="372" class="bodyStrong">Rerank — quality up, latency 3×</text>
-    <rect x="630" y="350" width="140" height="32" rx="16" fill="#f1f5f9" stroke="#94a3b8" stroke-width="1.5"/>
-    <text x="700" y="371" text-anchor="middle" class="pill">default-off</text>
+    <text x="40" y="372" class="bodyStrong">Rerank — quality up, shipped to the Space</text>
+    <rect x="630" y="350" width="140" height="32" rx="16" fill="#ecfdf5" stroke="#059669" stroke-width="1.5"/>
+    <text x="700" y="371" text-anchor="middle" class="pill" style="fill:#047857">live · pool 20</text>
     <text x="40" y="400" class="small">recall 0.67→0.79 <tspan class="up">▲</tspan> · precision 0.22→0.25 <tspan class="up">▲</tspan> · MRR 0.55→0.58 <tspan class="up">▲</tspan></text>
-    <text x="40" y="426" class="small">but p95 latency 286→886 ms <tspan class="down">▲</tspan> — and not baked into the Space image</text>
+    <text x="40" y="426" class="small">mean retrieval 121→429 ms (local CPU) · model baked into the image · env kill switch, no rebuild</text>
 
     <text x="40" y="468" class="bodyStrong">Section-aware chunking — regressed</text>
     <rect x="630" y="446" width="140" height="32" rx="16" fill="#f1f5f9" stroke="#94a3b8" stroke-width="1.5"/>
-    <text x="700" y="467" text-anchor="middle" class="pill">default-off</text>
+    <text x="700" y="467" text-anchor="middle" class="pill">stays off</text>
     <text x="40" y="496" class="small">recall 0.67→0.64 <tspan class="down">▼</tspan> · precision 0.22→0.18 <tspan class="down">▼</tspan> · MRR 0.55→0.34 <tspan class="down">▼</tspan></text>
 
-    <text x="40" y="528" class="small">Both stay implemented and reversible; eval wins must justify their cost.</text>
+    <text x="40" y="528" class="small">One graduated, one stayed off — the eval decided both. Either flips back with an env var.</text>
   </g>
 
   <!-- ============ Chapter 4: seams + deploy ============ -->
@@ -218,36 +222,43 @@
     <text x="220" y="154" class="label" style="fill:#047857">In use</text>
     <text x="510" y="154" class="label">Preset / swap</text>
 
-    <text x="64" y="204" class="label">Embeddings</text>
-    <circle cx="208" cy="199" r="5" fill="#059669"/>
-    <text x="220" y="204" class="body">local MiniLM · 384-dim</text>
-    <circle cx="498" cy="199" r="5" fill="none" stroke="#94a3b8" stroke-width="2"/>
-    <text x="510" y="204" class="small">Nebius — requires fresh ingest</text>
+    <text x="64" y="196" class="label">Embeddings</text>
+    <circle cx="208" cy="191" r="5" fill="#059669"/>
+    <text x="220" y="196" class="body">local MiniLM · 384-dim</text>
+    <circle cx="498" cy="191" r="5" fill="none" stroke="#94a3b8" stroke-width="2"/>
+    <text x="510" y="196" class="small">Nebius — requires fresh ingest</text>
 
-    <text x="64" y="256" class="label">Vector store</text>
-    <circle cx="208" cy="251" r="5" fill="#059669"/>
-    <text x="220" y="256" class="body">Pinecone (serving)</text>
-    <circle cx="498" cy="251" r="5" fill="none" stroke="#94a3b8" stroke-width="2"/>
-    <text x="510" y="256" class="small">Chroma — local dev; eval stays local</text>
+    <text x="64" y="242" class="label">Vector store</text>
+    <circle cx="208" cy="237" r="5" fill="#059669"/>
+    <text x="220" y="242" class="body">Pinecone (serving)</text>
+    <circle cx="498" cy="237" r="5" fill="none" stroke="#94a3b8" stroke-width="2"/>
+    <text x="510" y="242" class="small">Chroma — local dev; eval stays local</text>
 
-    <text x="64" y="308" class="label">Datastore</text>
-    <circle cx="208" cy="303" r="5" fill="#059669"/>
-    <text x="220" y="308" class="body">SQLite</text>
-    <circle cx="498" cy="303" r="5" fill="none" stroke="#94a3b8" stroke-width="2"/>
-    <text x="510" y="308" class="small">Postgres — future scale trigger</text>
+    <text x="64" y="288" class="label">Datastore</text>
+    <circle cx="208" cy="283" r="5" fill="#059669"/>
+    <text x="220" y="288" class="body">SQLite</text>
+    <circle cx="498" cy="283" r="5" fill="none" stroke="#94a3b8" stroke-width="2"/>
+    <text x="510" y="288" class="small">Postgres — future scale trigger</text>
 
-    <text x="64" y="360" class="label">Generation</text>
-    <circle cx="208" cy="355" r="5" fill="#059669"/>
-    <text x="220" y="360" class="body">Nebius — the mandatory call</text>
-    <circle cx="498" cy="355" r="5" fill="none" stroke="#94a3b8" stroke-width="2"/>
-    <text x="510" y="360" class="small">OpenRouter / OpenAI — proven swap</text>
+    <text x="64" y="334" class="label">Generation</text>
+    <circle cx="208" cy="329" r="5" fill="#059669"/>
+    <text x="220" y="334" class="body">Nebius — the mandatory call</text>
+    <circle cx="498" cy="329" r="5" fill="none" stroke="#94a3b8" stroke-width="2"/>
+    <text x="510" y="334" class="small">OpenRouter / OpenAI — proven swap</text>
+
+    <text x="64" y="380" class="label">Rerank</text>
+    <circle cx="208" cy="375" r="5" fill="#059669"/>
+    <text x="220" y="380" class="body">cross-encoder ON · pool 20</text>
+    <circle cx="498" cy="375" r="5" fill="none" stroke="#94a3b8" stroke-width="2"/>
+    <text x="510" y="380" class="small">kill switch: env off, no rebuild</text>
 
     <rect x="880" y="120" width="740" height="290" rx="14" class="plain"/>
     <text x="904" y="154" class="label">Deploy — Hugging Face Space</text>
-    <text x="904" y="196" class="body">Same Docker image locally and on the Space.</text>
-    <text x="904" y="230" class="body">First boot seeds the pinned eval corpus.</text>
-    <text x="904" y="264" class="body">HTTP smoke verifies boot + login render.</text>
-    <text x="904" y="298" class="body">Pinecone serving vectors persist outside /data.</text>
+    <text x="904" y="190" class="body">Same Docker image locally and on the Space.</text>
+    <text x="904" y="218" class="body">Both models baked at build — embedder + reranker, no downloads at boot.</text>
+    <text x="904" y="246" class="body">First boot seeds the pinned eval corpus.</text>
+    <text x="904" y="274" class="body">HTTP smoke verifies boot + login render.</text>
+    <text x="904" y="302" class="body">Pinecone serving vectors persist outside /data.</text>
     <rect x="904" y="320" width="692" height="62" rx="10" fill="#fef3c7" stroke="#d97706" stroke-width="2"/>
     <text x="926" y="358" font-size="14" font-weight="700" fill="#92400e">⚠ /data (users, uploads, logs) is wiped without paid persistent storage.</text>
   </g>
@@ -278,6 +289,6 @@
   </g>
 
   <g class="font">
-    <text x="72" y="2120" class="small">Companion visual for the write-up and demo. Architecture detail: diagrams 01–04.</text>
+    <text x="72" y="2120" class="small">Companion visual for the write-up and demo. Architecture detail: diagrams 01–04. Numbers: eval/REPORT.md · eval/phase2-rerank-delta.md (2026-06-11).</text>
   </g>
 </svg>
